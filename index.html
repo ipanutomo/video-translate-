@@ -665,21 +665,29 @@
     let url, body, headers;
 
     switch (api) {
-      case 'gemini': {
-        url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
-        body = {
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 256 }
-        };
-        headers = { 'Content-Type': 'application/json' };
-        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-        if (!response.ok) {
-          const err = await response.text();
-          throw new Error(`Gemini API error: ${response.status} - ${err}`);
-        }
-        const data = await response.json();
-        return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-      }
+case 'gemini': {
+  // Ganti model ke gemini-2.5-flash
+  url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;[cite: 1]
+  
+  const payload = {
+    contents: [{ parts: [{ text: prompt }] }],[cite: 1]
+    generationConfig: { temperature: 0.3, maxOutputTokens: 256 }[cite: 1]
+  };
+
+  const response = await fetch(url, { 
+    method: 'POST', 
+    headers: { 'Content-Type': 'application/json' }, 
+    body: JSON.stringify(payload) 
+  });
+
+  if (!response.ok) {
+    const err = await response.text();[cite: 1]
+    throw new Error(`Gemini API error: ${response.status} - ${err}`);[cite: 1]
+  }
+
+  const data = await response.json();[cite: 1]
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';[cite: 1]
+}
       case 'groq': {
         url = 'https://api.groq.com/openai/v1/chat/completions';
         body = {
