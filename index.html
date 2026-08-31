@@ -660,78 +660,78 @@
   }
 
 async function callTranslationAPI(api, key, text) {
-    const prompt = `Terjemahkan teks bahasa Cina berikut ke bahasa Indonesia. Berikan hanya terjemahannya, tanpa penjelasan tambahan.\n\nTeks: ${text}`;[cite: 2]
+    const prompt = `Terjemahkan teks bahasa Cina berikut ke bahasa Indonesia. Berikan hanya terjemahannya, tanpa penjelasan tambahan.\n\nTeks: ${text}`;[cite: 3]
 
-    let url, body, headers;[cite: 2]
+    let url, body, headers;[cite: 3]
 
     switch (api) {
       case 'gemini': {
-        // Menggunakan model Gemini 2.5 Flash yang aktif
-        url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+        // Menggunakan Gemini 2.5 Flash
+        url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;[cite: 3]
         body = {
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 256 }
-        };[cite: 2]
-        headers = { 'Content-Type': 'application/json' };[cite: 2]
-        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });[cite: 2]
+          contents: [{ parts: [{ text: prompt }] }],[cite: 3]
+          generationConfig: { temperature: 0.3, maxOutputTokens: 256 }[cite: 3]
+        };
+        headers = { 'Content-Type': 'application/json' };[cite: 3]
+        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });[cite: 3]
         if (!response.ok) {
-          const err = await response.text();[cite: 2]
-          throw new Error(`Gemini API error: ${response.status} - ${err}`);[cite: 2]
+          const err = await response.text();[cite: 3]
+          throw new Error(`Gemini API error: ${response.status} - ${err}`);[cite: 3]
         }
-        const data = await response.json();[cite: 2]
-        return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';[cite: 2]
+        const data = await response.json();[cite: 3]
+        return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';[cite: 3]
       }
       case 'groq': {
-        url = 'https://api.groq.com/openai/v1/chat/completions';[cite: 2]
+        url = 'https://api.groq.com/openai/v1/chat/completions';[cite: 3]
         body = {
-          model: 'llama-3.3-70b-versatile',
+          model: 'llama-3.3-70b-versatile',[cite: 3]
           messages: [
-            { role: 'system', content: 'Kamu adalah penerjemah bahasa Cina ke Indonesia. Berikan hanya terjemahan.' },
-            { role: 'user', content: prompt }
+            { role: 'system', content: 'Kamu adalah penerjemah bahasa Cina ke Indonesia. Berikan hanya terjemahan.' },[cite: 3]
+            { role: 'user', content: prompt }[cite: 3]
           ],
-          temperature: 0.3,
-          max_tokens: 256
-        };[cite: 2]
+          temperature: 0.3,[cite: 3]
+          max_tokens: 256[cite: 3]
+        };
         headers = {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${key}`
-        };[cite: 2]
-        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });[cite: 2]
+          'Content-Type': 'application/json',[cite: 3]
+          'Authorization': `Bearer ${key}`[cite: 3]
+        };
+        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });[cite: 3]
         if (!response.ok) {
-          const err = await response.text();[cite: 2]
-          throw new Error(`Groq API error: ${response.status} - ${err}`);[cite: 2]
+          const err = await response.text();[cite: 3]
+          throw new Error(`Groq API error: ${response.status} - ${err}`);[cite: 3]
         }
-        const data = await response.json();[cite: 2]
-        return data?.choices?.[0]?.message?.content?.trim() || '';[cite: 2]
+        const data = await response.json();[cite: 3]
+        return data?.choices?.[0]?.message?.content?.trim() || '';[cite: 3]
       }
       case 'openrouter': {
-        url = 'https://openrouter.ai/api/v1/chat/completions';[cite: 2]
+        url = 'https://openrouter.ai/api/v1/chat/completions';[cite: 3]
         body = {
-          // Menggunakan model Gemini 2.5 Flash di OpenRouter
+          // DIUBAH: Menggunakan gemini-2.5-flash untuk OpenRouter juga
           model: 'google/gemini-2.5-flash',
           messages: [
-            { role: 'system', content: 'Kamu adalah penerjemah bahasa Cina ke Indonesia. Berikan hanya terjemahan.' },
-            { role: 'user', content: prompt }
+            { role: 'system', content: 'Kamu adalah penerjemah bahasa Cina ke Indonesia. Berikan hanya terjemahan.' },[cite: 3]
+            { role: 'user', content: prompt }[cite: 3]
           ],
-          temperature: 0.3,
-          max_tokens: 256
-        };[cite: 2]
+          temperature: 0.3,[cite: 3]
+          max_tokens: 256[cite: 3]
+        };
         headers = {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${key}`,
-          'HTTP-Referer': window.location.href,
-          'X-Title': 'Local Subtitle Editor'
-        };[cite: 2]
-        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });[cite: 2]
+          'Content-Type': 'application/json',[cite: 3]
+          'Authorization': `Bearer ${key}`,[cite: 3]
+          'HTTP-Referer': window.location.href,[cite: 3]
+          'X-Title': 'Local Subtitle Editor'[cite: 3]
+        };
+        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });[cite: 3]
         if (!response.ok) {
-          const err = await response.text();[cite: 2]
-          throw new Error(`OpenRouter API error: ${response.status} - ${err}`);[cite: 2]
+          const err = await response.text();[cite: 3]
+          throw new Error(`OpenRouter API error: ${response.status} - ${err}`);[cite: 3]
         }
-        const data = await response.json();[cite: 2]
-        return data?.choices?.[0]?.message?.content?.trim() || '';[cite: 2]
+        const data = await response.json();[cite: 3]
+        return data?.choices?.[0]?.message?.content?.trim() || '';[cite: 3]
       }
       default:
-        throw new Error('API tidak dikenal');[cite: 2]
+        throw new Error('API tidak dikenal');[cite: 3]
     }
   }
   }
