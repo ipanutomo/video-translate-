@@ -356,7 +356,6 @@
     if (!seg) return;
     const text = seg[field] || '';
     if (!text) {
-      // Feedback singkat
       const btn = document.querySelector(`.copy-btn[data-id="${id}"][data-field="${field}"]`);
       if (btn) {
         btn.textContent = '📭';
@@ -376,7 +375,6 @@
         }, 1500);
       }
     }).catch(() => {
-      // Fallback: select + copy manual
       const textarea = document.createElement('textarea');
       textarea.value = text;
       document.body.appendChild(textarea);
@@ -471,7 +469,6 @@
     const key = document.getElementById('transcribeApiKey').value.trim();
     if (!key) return alert('Masukkan Groq API Key untuk transkripsi.');
 
-    // Cek dukungan WebCodecs
     if (!('AudioDecoder' in window) || !('VideoDecoder' in window)) {
       alert('Browser Anda tidak mendukung WebCodecs. Gunakan Chrome/Edge terbaru.');
       return;
@@ -509,8 +506,6 @@
     return new Promise(async (resolve, reject) => {
       try {
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const source = audioContext.createBufferSource();
-        
         const response = await fetch(videoURL);
         const arrayBuffer = await response.arrayBuffer();
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
@@ -659,81 +654,85 @@
     autosave();
   }
 
-async function callTranslationAPI(api, key, text) {
-    const prompt = `Terjemahkan teks bahasa Cina berikut ke bahasa Indonesia. Berikan hanya terjemahannya, tanpa penjelasan tambahan.\n\nTeks: ${text}`;[cite: 3]
+  async function callTranslationAPI(api, key, text) {
+    const prompt = `Terjemahkan teks bahasa Cina berikut ke bahasa Indonesia. Berikan hanya terjemahannya, tanpa penjelasan tambahan.\n\nTeks: ${text}`;
 
-    let url, body, headers;[cite: 3]
+    let url, body, headers;
 
     switch (api) {
       case 'gemini': {
-        // Menggunakan Gemini 2.5 Flash
-        url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;[cite: 3]
-        body = {
-          contents: [{ parts: [{ text: prompt }] }],[cite: 3]
-          generationConfig: { temperature: 0.3, maxOutputTokens: 256 }[cite: 3]
+        url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+        const payload = {
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 256 }
         };
-        headers = { 'Content-Type': 'application/json' };[cite: 3]
-        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });[cite: 3]
+
+        const response = await fetch(url, { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify(payload) 
+        });
+
         if (!response.ok) {
-          const err = await response.text();[cite: 3]
-          throw new Error(`Gemini API error: ${response.status} - ${err}`);[cite: 3]
+          const err = await response.text();
+          throw new Error(`Gemini API error: ${response.status} - ${err}`);
         }
-        const data = await response.json();[cite: 3]
-        return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';[cite: 3]
+
+        const data = await response.json();
+        return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
       }
       case 'groq': {
-        url = 'https://api.groq.com/openai/v1/chat/completions';[cite: 3]
+        url = 'https://api.groq.com/openai/v1/chat/completions';
         body = {
-          model: 'llama-3.3-70b-versatile',[cite: 3]
+          model: 'llama-3.3-70b-versatile',
           messages: [
-            { role: 'system', content: 'Kamu adalah penerjemah bahasa Cina ke Indonesia. Berikan hanya terjemahan.' },[cite: 3]
-            { role: 'user', content: prompt }[cite: 3]
+            { role: 'system', content: 'Kamu adalah penerjemah bahasa Cina ke Indonesia. Berikan hanya terjemahan.' },
+            { role: 'user', content: prompt }
           ],
-          temperature: 0.3,[cite: 3]
-          max_tokens: 256[cite: 3]
+          temperature: 0.3,
+          max_tokens: 256
         };
         headers = {
-          'Content-Type': 'application/json',[cite: 3]
-          'Authorization': `Bearer ${key}`[cite: 3]
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`
         };
-        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });[cite: 3]
+        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
         if (!response.ok) {
-          const err = await response.text();[cite: 3]
-          throw new Error(`Groq API error: ${response.status} - ${err}`);[cite: 3]
+          const err = await response.text();
+          throw new Error(`Groq API error: ${response.status} - ${err}`);
         }
-        const data = await response.json();[cite: 3]
-        return data?.choices?.[0]?.message?.content?.trim() || '';[cite: 3]
+        const data = await response.json();
+        return data?.choices?.[0]?.message?.content?.trim() || '';
       }
       case 'openrouter': {
-        url = 'https://openrouter.ai/api/v1/chat/completions';[cite: 3]
+        url = 'https://openrouter.ai/api/v1/chat/completions';
         body = {
-          // DIUBAH: Menggunakan gemini-2.5-flash untuk OpenRouter juga
+          // Model diperbarui ke gemini-2.5-flash
           model: 'google/gemini-2.5-flash',
           messages: [
-            { role: 'system', content: 'Kamu adalah penerjemah bahasa Cina ke Indonesia. Berikan hanya terjemahan.' },[cite: 3]
-            { role: 'user', content: prompt }[cite: 3]
+            { role: 'system', content: 'Kamu adalah penerjemah bahasa Cina ke Indonesia. Berikan hanya terjemahan.' },
+            { role: 'user', content: prompt }
           ],
-          temperature: 0.3,[cite: 3]
-          max_tokens: 256[cite: 3]
+          temperature: 0.3,
+          max_tokens: 256
         };
         headers = {
-          'Content-Type': 'application/json',[cite: 3]
-          'Authorization': `Bearer ${key}`,[cite: 3]
-          'HTTP-Referer': window.location.href,[cite: 3]
-          'X-Title': 'Local Subtitle Editor'[cite: 3]
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`,
+          'HTTP-Referer': window.location.href,
+          'X-Title': 'Local Subtitle Editor'
         };
-        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });[cite: 3]
+        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
         if (!response.ok) {
-          const err = await response.text();[cite: 3]
-          throw new Error(`OpenRouter API error: ${response.status} - ${err}`);[cite: 3]
+          const err = await response.text();
+          throw new Error(`OpenRouter API error: ${response.status} - ${err}`);
         }
-        const data = await response.json();[cite: 3]
-        return data?.choices?.[0]?.message?.content?.trim() || '';[cite: 3]
+        const data = await response.json();
+        return data?.choices?.[0]?.message?.content?.trim() || '';
       }
       default:
-        throw new Error('API tidak dikenal');[cite: 3]
+        throw new Error('API tidak dikenal');
     }
-  }
   }
 
   function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
