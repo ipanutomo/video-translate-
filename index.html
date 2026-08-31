@@ -444,10 +444,9 @@
   }
 
   function updateTimelineHighlight() {
-    document.querySelectorAll('.segment-block').forEach(el => el.classList.remove('active'));
     const ct = video.currentTime;
     const seg = segments.find(s => ct >= s.start && ct < s.end);
-    if (seg) {
+    if (seg && seg.id !== currentSegId) {
       currentSegId = seg.id;
       renderAll();
     }
@@ -661,7 +660,7 @@
 
     switch (api) {
       case 'gemini': {
-        url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+        url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
         const payload = {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { temperature: 0.3, maxOutputTokens: 256 }
@@ -707,7 +706,6 @@
       case 'openrouter': {
         url = 'https://openrouter.ai/api/v1/chat/completions';
         body = {
-          // Model diperbarui ke gemini-2.5-flash
           model: 'google/gemini-2.5-flash',
           messages: [
             { role: 'system', content: 'Kamu adalah penerjemah bahasa Cina ke Indonesia. Berikan hanya terjemahan.' },
