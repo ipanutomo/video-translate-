@@ -27,7 +27,7 @@
     .btn-sm { padding: 4px 10px; font-size: 0.75rem; }
     .btn-xs { padding: 2px 8px; font-size: 0.65rem; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .segment-row { background: #1a212c; border-radius: 12px; padding: 8px 12px; margin-bottom: 6px; border-left: 4px solid #3b465c; }
+    .segment-row { background: #1a212c; border-radius: 12px; padding: 8px 12px; margin-bottom: 6px; border-left: 4px solid #3b465c; transition: background 0.2s; }
     .segment-row.active-seg { border-left-color: #60a5fa; background: #1e2a3a; }
     .segment-row.processing { border-left-color: #f59e0b; background: #1e2a1a; }
     input, textarea, select { background: #0f151e; border: 1px solid #2d3748; color: #e5e7eb; border-radius: 10px; padding: 6px 10px; width: 100%; font-size: 0.85rem; }
@@ -62,6 +62,17 @@
     .mode-video i { color: #60a5fa; }
     .tip-box { background: #0f1a2e; border: 1px solid #1e3a5f; border-radius: 10px; padding: 8px 12px; margin-top: 6px; }
     .tip-box i { color: #60a5fa; }
+    
+    /* Optimasi untuk performa HP */
+    .segment-row * { 
+      transition: none !important; /* Matikan animasi untuk performa */
+    }
+    .segment-row {
+      will-change: auto; /* Hindari paint pada elemen yang sering berubah */
+    }
+    #segmentList {
+      overscroll-behavior: contain; /* Smooth scrolling */
+    }
   </style>
 </head>
 <body>
@@ -229,6 +240,11 @@
   let currentSegId = null;
   let segCounter = 0;
   let isProcessing = false;
+  
+  // ========== PERFORMANCE OPTIMIZATION ==========
+  let renderTimeout = null;
+  let isRendering = false;
+  let pendingRender = false;
 
   const video = document.getElementById('videoPlayer');
   const overlayText = document.getElementById('overlayText');
@@ -243,8 +259,12 @@
 
   // ========== AUTOSAVE ==========
   function autosave() {
-    const data = { segments, overlayMode, segCounter };
-    localStorage.setItem('subtitleEditorProject', JSON.stringify(data));
+    try {
+      const data = { segments, overlayMode, segCounter };
+      localStorage.setItem('subtitleEditorProject', JSON.stringify(data));
+    } catch (e) {
+      // Silent fail untuk autosave
+    }
   }
 
   // ========== VIDEO ==========
@@ -266,8 +286,7 @@
       timeDisplay.textContent = formatTime(0) + ' / ' + formatTime(video.duration);
       updateVideoDuration();
       
-      // Estimasi ukuran audio setelah optimasi
-      const estSizeMB = (video.duration / 60) * 1.5; // ~1.5MB per menit
+      const estSizeMB = (video.duration / 60) * 1.5;
       if (estSizeMB > 24) {
         setStatus(`⚠️ Video panjang (${Math.round(video.duration/60)} menit). Estimasi audio ~${Math.round(estSizeMB)} MB. Mungkin perlu kompresi ekstra.`, 'error');
       } else {
@@ -462,7 +481,12 @@
 
   function updateText(id, field, value) {
     const seg = segments.find(s => s.id === id);
-    if (seg) { seg[field] = value; autosave(); renderAll(); }
+    if (seg) { 
+      seg[field] = value; 
+      autosave(); 
+      // Tidak perlu render ulang penuh, update input value saja
+      updateSegmentInput(id, field, value);
+    }
   }
 
   function updateTime(id, field, value) {
@@ -474,8 +498,41 @@
         if (seg.start >= seg.end) {
           seg.end = seg.start + 1;
         }
-        renderAll();
         autosave();
+        // Update timeline dan overlay saja
+        renderTimeline();
+        updateOverlay();
+        updateSegmentTimeDisplay(id, field, seg[field]);
+      }
+    }
+  }
+
+  // ========== OPTIMIZED: Update single segment input ==========
+  function updateSegmentInput(id, field, value) {
+    const rows = segmentListEl.querySelectorAll('.segment-row');
+    for (const row of rows) {
+      if (row.dataset.id == id) {
+        const input = row.querySelector(`.seg-${field}`);
+        if (input && input.value !== value) {
+          input.value = value;
+        }
+        break;
+      }
+    }
+  }
+
+  function updateSegmentTimeDisplay(id, field, value) {
+    const rows = segmentListEl.querySelectorAll('.segment-row');
+    for (const row of rows) {
+      if (row.dataset.id == id) {
+        const input = row.querySelector(`.seg-${field}`);
+        if (input) {
+          const formatted = formatTime(value);
+          if (input.value !== formatted) {
+            input.value = formatted;
+          }
+        }
+        break;
       }
     }
   }
@@ -527,7 +584,7 @@
     });
   }
 
-  // ========== COPY JSON (KEY: 'text') ==========
+  // ========== COPY JSON ==========
   function copyJSON() {
     if (segments.length === 0) {
       alert('Tidak ada segmen untuk diekspor.');
@@ -569,13 +626,32 @@
     });
   }
 
-  // ========== RENDER ==========
+  // ========== RENDER (OPTIMIZED) ==========
   function renderAll() {
-    renderSegmentList();
-    renderTimeline();
-    segCountEl.textContent = segments.length + ' segmen';
-    updateOverlay();
-    updateJSONPreview();
+    // Debounce render untuk mencegah multiple render berturut-turut
+    clearTimeout(renderTimeout);
+    renderTimeout = setTimeout(() => {
+      if (isRendering) {
+        pendingRender = true;
+        return;
+      }
+      isRendering = true;
+      try {
+        renderSegmentList();
+        renderTimeline();
+        segCountEl.textContent = segments.length + ' segmen';
+        updateOverlay();
+        updateJSONPreview();
+      } catch (e) {
+        console.warn('Render error:', e);
+      } finally {
+        isRendering = false;
+        if (pendingRender) {
+          pendingRender = false;
+          renderAll();
+        }
+      }
+    }, 50); // 50ms debounce
   }
 
   function updateJSONPreview() {
@@ -596,64 +672,170 @@
     previewEl.className = 'json-preview text-green-300';
   }
 
+  // ========== RENDER SEGMENT LIST (OPTIMIZED) ==========
   function renderSegmentList() {
-    let html = '';
-    segments.forEach(seg => {
-      const active = currentSegId === seg.id ? 'active-seg' : '';
-      const processing = seg._processing ? 'processing' : '';
-      html += `
-        <div class="segment-row ${active} ${processing}" onclick="setCurrentSeg(${seg.id})">
+    const fragment = document.createDocumentFragment();
+    
+    if (segments.length === 0) {
+      const emptyMsg = document.createElement('div');
+      emptyMsg.className = 'text-gray-500 text-sm p-2';
+      emptyMsg.textContent = 'Belum ada segmen. Tambahkan segmen.';
+      fragment.appendChild(emptyMsg);
+    } else {
+      segments.forEach(seg => {
+        const div = document.createElement('div');
+        div.className = `segment-row ${currentSegId === seg.id ? 'active-seg' : ''} ${seg._processing ? 'processing' : ''}`;
+        div.dataset.id = seg.id;
+        
+        div.innerHTML = `
           <div class="flex flex-wrap items-center gap-1 text-xs">
-            <input type="checkbox" ${seg.selected?'checked':''} onclick="event.stopPropagation(); toggleSelectSegment(${seg.id})" class="w-4 h-4 accent-blue-500">
+            <input type="checkbox" ${seg.selected?'checked':''} class="seg-checkbox w-4 h-4 accent-blue-500">
             <span class="text-gray-400 text-[10px]">#${seg.id}</span>
-            <div class="time-input"><input type="text" value="${formatTime(seg.start)}" onchange="updateTime(${seg.id}, 'start', this.value)" onclick="event.stopPropagation()" class="text-[10px] p-0 px-1" /></div>
+            <div class="time-input"><input type="text" value="${formatTime(seg.start)}" class="seg-start text-[10px] p-0 px-1" /></div>
             <span class="text-gray-500">→</span>
-            <div class="time-input"><input type="text" value="${formatTime(seg.end)}" onchange="updateTime(${seg.id}, 'end', this.value)" onclick="event.stopPropagation()" class="text-[10px] p-0 px-1" /></div>
-            <button class="btn btn-sm btn-outline" onclick="event.stopPropagation(); deleteSegment(${seg.id})"><i class="fas fa-times text-red-400 text-[10px]"></i></button>
+            <div class="time-input"><input type="text" value="${formatTime(seg.end)}" class="seg-end text-[10px] p-0 px-1" /></div>
+            <button class="btn btn-sm btn-outline seg-delete"><i class="fas fa-times text-red-400 text-[10px]"></i></button>
             ${seg._processing ? '<span class="spinner" style="width:12px;height:12px;"></span>' : ''}
           </div>
           <div class="grid grid-cols-2 gap-1 mt-1">
             <div class="flex items-center gap-1">
-              <input type="text" placeholder="Original (Cina)" value="${escHtml(seg.original)}" onchange="updateText(${seg.id}, 'original', this.value)" class="text-xs flex-1">
-              <button class="copy-btn" data-id="${seg.id}" data-field="original" onclick="event.stopPropagation(); copyText(${seg.id}, 'original')" title="Copy teks Original"><i class="fas fa-copy"></i></button>
+              <input type="text" placeholder="Original (Cina)" value="${escHtml(seg.original)}" class="seg-original text-xs flex-1">
+              <button class="copy-btn seg-copy-original" data-field="original"><i class="fas fa-copy"></i></button>
             </div>
             <div class="flex items-center gap-1">
-              <input type="text" placeholder="Translation (Indonesia)" value="${escHtml(seg.translation)}" onchange="updateText(${seg.id}, 'translation', this.value)" class="text-xs flex-1">
-              <button class="copy-btn" data-id="${seg.id}" data-field="translation" onclick="event.stopPropagation(); copyText(${seg.id}, 'translation')" title="Copy teks Translation"><i class="fas fa-copy"></i></button>
+              <input type="text" placeholder="Translation (Indonesia)" value="${escHtml(seg.translation)}" class="seg-translation text-xs flex-1">
+              <button class="copy-btn seg-copy-translation" data-field="translation"><i class="fas fa-copy"></i></button>
             </div>
           </div>
-        </div>
-      `;
-    });
-    segmentListEl.innerHTML = html || '<div class="text-gray-500 text-sm p-2">Belum ada segmen. Tambahkan segmen.</div>';
+        `;
+        
+        // ===== EVENT DELEGATION - SATU LISTENER PER SEGMEN =====
+        // Click pada row
+        div.addEventListener('click', (e) => {
+          if (!e.target.closest('input') && !e.target.closest('button')) {
+            setCurrentSeg(seg.id);
+          }
+        });
+        
+        // Checkbox
+        const checkbox = div.querySelector('.seg-checkbox');
+        checkbox.addEventListener('change', (e) => {
+          e.stopPropagation();
+          toggleSelectSegment(seg.id);
+        });
+        
+        // Time inputs
+        const startInput = div.querySelector('.seg-start');
+        startInput.addEventListener('change', function() {
+          updateTime(seg.id, 'start', this.value);
+        });
+        const endInput = div.querySelector('.seg-end');
+        endInput.addEventListener('change', function() {
+          updateTime(seg.id, 'end', this.value);
+        });
+        
+        // Text inputs
+        const originalInput = div.querySelector('.seg-original');
+        originalInput.addEventListener('change', function() {
+          updateText(seg.id, 'original', this.value);
+        });
+        const translationInput = div.querySelector('.seg-translation');
+        translationInput.addEventListener('change', function() {
+          updateText(seg.id, 'translation', this.value);
+        });
+        
+        // Delete button
+        const deleteBtn = div.querySelector('.seg-delete');
+        deleteBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteSegment(seg.id);
+        });
+        
+        // Copy buttons
+        const copyOriginal = div.querySelector('.seg-copy-original');
+        copyOriginal.addEventListener('click', (e) => {
+          e.stopPropagation();
+          copyText(seg.id, 'original');
+        });
+        const copyTranslation = div.querySelector('.seg-copy-translation');
+        copyTranslation.addEventListener('click', (e) => {
+          e.stopPropagation();
+          copyText(seg.id, 'translation');
+        });
+        
+        fragment.appendChild(div);
+      });
+    }
+    
+    // Replace content with fragment (lebih efisien)
+    segmentListEl.innerHTML = '';
+    segmentListEl.appendChild(fragment);
   }
 
+  // ========== RENDER TIMELINE (OPTIMIZED) ==========
   function renderTimeline() {
-    if (!video.duration) { timelineEl.innerHTML = ''; return; }
-    let html = '';
+    if (!video.duration) { 
+      timelineEl.innerHTML = ''; 
+      return; 
+    }
+    
+    const fragment = document.createDocumentFragment();
     const total = video.duration || 1;
-    segments.forEach(seg => {
-      const left = (seg.start / total) * 100;
-      const width = ((seg.end - seg.start) / total) * 100;
-      const active = currentSegId === seg.id ? 'active' : '';
-      html += `<div class="segment-block ${active}" style="margin-left:${left}%; width:${Math.max(width,2)}%;" onclick="setCurrentSeg(${seg.id})">${formatTime(seg.start)}</div>`;
-    });
-    timelineEl.innerHTML = html || '<span class="text-gray-500 text-xs">Tidak ada segmen</span>';
+    
+    if (segments.length === 0) {
+      const emptyMsg = document.createElement('span');
+      emptyMsg.className = 'text-gray-500 text-xs';
+      emptyMsg.textContent = 'Tidak ada segmen';
+      fragment.appendChild(emptyMsg);
+    } else {
+      segments.forEach(seg => {
+        const left = (seg.start / total) * 100;
+        const width = ((seg.end - seg.start) / total) * 100;
+        const active = currentSegId === seg.id ? 'active' : '';
+        const div = document.createElement('div');
+        div.className = `segment-block ${active}`;
+        div.style.marginLeft = `${left}%`;
+        div.style.width = `${Math.max(width,2)}%`;
+        div.textContent = formatTime(seg.start);
+        div.addEventListener('click', () => setCurrentSeg(seg.id));
+        fragment.appendChild(div);
+      });
+    }
+    
+    timelineEl.innerHTML = '';
+    timelineEl.appendChild(fragment);
   }
 
   function updateTimelineHighlight() {
-    document.querySelectorAll('.segment-block').forEach(el => el.classList.remove('active'));
+    // Update highlight tanpa render ulang penuh
+    const blocks = timelineEl.querySelectorAll('.segment-block');
+    blocks.forEach(block => block.classList.remove('active'));
+    
     const ct = video.currentTime;
     const seg = segments.find(s => ct >= s.start && ct < s.end);
     if (seg) {
       currentSegId = seg.id;
-      renderAll();
+      // Update active class di timeline
+      const blocks2 = timelineEl.querySelectorAll('.segment-block');
+      blocks2.forEach((block, index) => {
+        if (segments[index] && segments[index].id === seg.id) {
+          block.classList.add('active');
+        }
+      });
+      // Update segment list highlight
+      const rows = segmentListEl.querySelectorAll('.segment-row');
+      rows.forEach(row => {
+        row.classList.toggle('active-seg', row.dataset.id == seg.id);
+      });
     }
   }
 
-  function escHtml(str) { return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function escHtml(str) { 
+    if (!str) return '';
+    return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); 
+  }
 
-  // ========== EKSTRAK AUDIO DENGAN OPTIMASI (MONO + 16kHz) ==========
+  // ========== EKSTRAK AUDIO DENGAN OPTIMASI ==========
   async function extractAudioOptimized(start, end) {
     return new Promise(async (resolve, reject) => {
       try {
@@ -674,7 +856,6 @@
         
         const channels = audioBuffer.numberOfChannels;
         
-        // STEP 1: Konversi ke MONO
         const monoBuffer = audioContext.createBuffer(1, length, sampleRate);
         const monoData = monoBuffer.getChannelData(0);
         
@@ -688,7 +869,6 @@
           monoData[i] = sum / channels;
         }
         
-        // STEP 2: Downsample ke 16000 Hz
         const targetRate = 16000;
         const ratio = sampleRate / targetRate;
         const newLength = Math.floor(length / ratio);
@@ -700,7 +880,6 @@
           downsampledData[i] = monoData[Math.min(srcIdx, monoData.length - 1)] || 0;
         }
         
-        // STEP 3: Ekspor ke WAV (sudah kecil)
         const wavBlob = bufferToWav(downsampledBuffer);
         await audioContext.close();
         
@@ -712,7 +891,6 @@
     });
   }
 
-  // ========== EKSTRAK AUDIO UNTUK SEGMEN (dari video atau audio) ==========
   async function extractAudioFromFile(file, start, end) {
     return new Promise(async (resolve, reject) => {
       try {
@@ -742,7 +920,6 @@
           }
         }
         
-        // Konversi ke mono + downsample untuk ukuran kecil
         const monoBuffer = audioContext.createBuffer(1, length, sampleRate);
         const monoData = monoBuffer.getChannelData(0);
         for (let i = 0; i < length; i++) {
@@ -772,7 +949,6 @@
     });
   }
 
-  // ========== BUFFER TO WAV ==========
   function bufferToWav(buffer) {
     const numChannels = buffer.numberOfChannels;
     const sampleRate = buffer.sampleRate;
@@ -868,7 +1044,7 @@
         failCount++;
         renderAll();
       }
-      await sleep(500);
+      await sleep(300);
     }
 
     isProcessing = false;
@@ -900,7 +1076,7 @@
     return text.trim();
   }
 
-  // ========== AUTO TRANSCRIBE FULL (OPTIMIZED) ==========
+  // ========== AUTO TRANSCRIBE FULL ==========
   async function autoTranscribeFull() {
     if (isProcessing) return;
     if (!videoFile && !audioFile) {
@@ -929,7 +1105,6 @@
       let fileExtension = 'wav';
       
       if (isAudioMode && audioFile) {
-        // === MODE AUDIO: Kirim file ASLI ===
         progressEl.innerHTML = '⏳ 1/2: Menggunakan file audio langsung...';
         progressEl.className = 'text-xs mt-1 status-bar status-progress';
         
@@ -938,7 +1113,6 @@
         fileExtension = ['mp3','wav','m4a','aac','ogg'].includes(ext) ? ext : 'wav';
         
       } else if (videoFile) {
-        // === MODE VIDEO: Ekstrak dengan OPTIMASI (MONO + 16kHz) ===
         progressEl.innerHTML = '⏳ 1/3: Mengekstrak & mengoptimasi audio (mono + 16kHz)...';
         progressEl.className = 'text-xs mt-1 status-bar status-progress';
         
@@ -952,7 +1126,6 @@
         throw new Error('Tidak ada file video atau audio yang dimuat.');
       }
       
-      // Cek ukuran audio
       const sizeMB = audioBlob.size / (1024 * 1024);
       if (sizeMB > 25) {
         throw new Error(`❌ Audio terlalu besar (${sizeMB.toFixed(1)} MB). Maks 25 MB.`);
@@ -961,7 +1134,6 @@
       progressEl.innerHTML = `⏳ 2/2: Mentranskripsi audio (${sizeMB.toFixed(2)} MB)...`;
       const result = await transcribeFullAudio(audioBlob, key, fileExtension);
       
-      // Proses hasil transkripsi
       segments = [];
       segCounter = 0;
       
@@ -1094,22 +1266,38 @@
     let successCount = 0;
     let failCount = 0;
 
-    for (let seg of selected) {
-      if (!seg.original || seg.original.trim() === '') {
-        seg.translation = '[Teks kosong]';
-        continue;
+    // Proses translation dengan batch kecil untuk mengurangi render
+    const BATCH_SIZE = 3;
+    for (let i = 0; i < selected.length; i += BATCH_SIZE) {
+      const batch = selected.slice(i, i + BATCH_SIZE);
+      
+      for (let seg of batch) {
+        if (!seg.original || seg.original.trim() === '') {
+          seg.translation = '[Teks kosong]';
+          continue;
+        }
+        try {
+          const translated = await callTranslationAPI(api, key, seg.original);
+          seg.translation = translated;
+          successCount++;
+          // Update input tanpa render ulang penuh
+          updateSegmentInput(seg.id, 'translation', translated);
+        } catch (error) {
+          failCount++;
+          seg.translation = `[Error: ${error.message}]`;
+          updateSegmentInput(seg.id, 'translation', `[Error: ${error.message}]`);
+        }
+        await sleep(200);
       }
-      try {
-        const translated = await callTranslationAPI(api, key, seg.original);
-        seg.translation = translated;
-        successCount++;
-        renderAll();
-      } catch (error) {
-        failCount++;
-        seg.translation = `[Error: ${error.message}]`;
-        renderAll();
-      }
-      await sleep(300);
+      
+      // Render setelah batch selesai (bukan setiap segmen)
+      renderTimeline();
+      updateOverlay();
+      segCountEl.textContent = segments.length + ' segmen';
+      updateJSONPreview();
+      
+      // Update status
+      setStatus(`⏳ Menerjemahkan... ${successCount + failCount}/${selected.length}`, 'info');
     }
 
     isProcessing = false;
@@ -1275,9 +1463,13 @@
 
   // ========== SAVE / LOAD PROJECT ==========
   function saveProject() {
-    const data = { segments, overlayMode, segCounter };
-    localStorage.setItem('subtitleEditorProject', JSON.stringify(data));
-    alert('Project tersimpan di localStorage.');
+    try {
+      const data = { segments, overlayMode, segCounter };
+      localStorage.setItem('subtitleEditorProject', JSON.stringify(data));
+      alert('✅ Project tersimpan di localStorage.');
+    } catch (e) {
+      alert('❌ Gagal menyimpan project: ' + e.message);
+    }
   }
 
   function loadProject() {
@@ -1290,8 +1482,10 @@
       segCounter = data.segCounter || 0;
       renderAll();
       autosave();
-      alert('Project dimuat.');
-    } catch(e) { alert('Gagal load project.'); }
+      alert('✅ Project dimuat.');
+    } catch(e) { 
+      alert('❌ Gagal load project: ' + e.message); 
+    }
   }
 
   // ========== TAB SWITCH ==========
@@ -1304,6 +1498,7 @@
 
   // ========== INIT ==========
   (function init() {
+    // Load saved data
     const raw = localStorage.getItem('subtitleEditorProject');
     if (raw) {
       try {
@@ -1314,6 +1509,8 @@
         renderAll();
       } catch(e) {}
     }
+    
+    // Default segments jika kosong
     if (segments.length === 0) {
       addSegment(0, 5, '你好，世界', 'Halo dunia');
       addSegment(6, 10, '这是一个测试', 'Ini adalah tes');
@@ -1322,6 +1519,7 @@
     
     updateVideoDuration();
     
+    // Load saved API keys
     const savedTranscribeKey = localStorage.getItem('transcribeApiKey');
     if (savedTranscribeKey) document.getElementById('transcribeApiKey').value = savedTranscribeKey;
     document.getElementById('transcribeApiKey').addEventListener('change', function() {
@@ -1333,6 +1531,9 @@
     document.getElementById('translateApiKey').addEventListener('change', function() {
       localStorage.setItem('translateApiKey', this.value);
     });
+    
+    // Log performa
+    console.log('✅ App loaded with', segments.length, 'segments');
   })();
 </script>
 </body>
