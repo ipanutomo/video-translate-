@@ -56,6 +56,12 @@
     .copy-btn.copied { color: #34d399; }
     .auto-box { border-color: #059669; background: #0a1f1a; }
     .json-preview { background: #0f151e; border: 1px solid #2d3748; border-radius: 8px; padding: 8px; max-height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.7rem; white-space: pre-wrap; word-break: break-all; }
+    .mode-indicator { position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.75); padding: 4px 14px; border-radius: 20px; font-size: 0.7rem; backdrop-filter: blur(4px); pointer-events: none; }
+    .mode-indicator i { margin-right: 6px; }
+    .mode-audio i { color: #34d399; }
+    .mode-video i { color: #60a5fa; }
+    .tip-box { background: #0f1a2e; border: 1px solid #1e3a5f; border-radius: 10px; padding: 8px 12px; margin-top: 6px; }
+    .tip-box i { color: #60a5fa; }
   </style>
 </head>
 <body>
@@ -67,6 +73,10 @@
     <div class="flex flex-wrap gap-2">
       <button class="btn btn-primary" onclick="document.getElementById('videoInput').click()"><i class="fas fa-video mr-1"></i> Buka Video</button>
       <input type="file" id="videoInput" accept="video/*" class="hidden" onchange="loadVideo(event)">
+      
+      <button class="btn btn-success" onclick="document.getElementById('audioInput').click()"><i class="fas fa-music mr-1"></i> Upload MP3</button>
+      <input type="file" id="audioInput" accept=".mp3,.wav,.m4a,.aac,.ogg" class="hidden" onchange="loadAudio(event)">
+      
       <button class="btn btn-outline" onclick="importSRT()"><i class="fas fa-file-import mr-1"></i> Import SRT</button>
       <button class="btn btn-outline" onclick="exportSRT('original')"><i class="fas fa-download mr-1"></i> Export SRT</button>
       <button class="btn btn-outline" onclick="saveProject()"><i class="fas fa-save mr-1"></i> Save</button>
@@ -81,6 +91,11 @@
     <div class="md:col-span-3 space-y-3">
       <div class="card video-container">
         <video id="videoPlayer" controls playsinline preload="metadata"></video>
+        
+        <div id="modeIndicator" class="mode-indicator hidden">
+          <i class="fas fa-music"></i> <span id="modeText">Audio Mode</span>
+        </div>
+        
         <div id="subtitleOverlay" class="subtitle-overlay"><span id="overlayText">[Subtitle]</span></div>
         <div class="flex flex-wrap items-center gap-2 p-2 bg-[#141b26] text-sm">
           <button onclick="togglePlay()" class="btn btn-sm"><i class="fas fa-play" id="playIcon"></i></button>
@@ -95,6 +110,7 @@
           <button class="btn btn-sm btn-primary" onclick="setOverlay('both')">Both</button>
         </div>
       </div>
+      
       <div class="card">
         <div class="flex justify-between items-center mb-1"><span class="text-xs font-semibold">Timeline Segmen</span><span id="segCount" class="text-xs text-gray-400">0 segmen</span></div>
         <div id="timelineContainer" class="timeline"></div>
@@ -120,13 +136,13 @@
         
         <!-- Step 1 -->
         <div id="step1Panel">
-          <!-- ====== OPSI 2: AUTO (BARU) ====== -->
+          <!-- OPSI AUTO -->
           <div class="api-section auto-box">
             <div class="label text-green-400">
-              <i class="fas fa-robot mr-1"></i> ⚡ Opsi 2: Auto Split dari Whisper (FULL Video)
+              <i class="fas fa-robot mr-1"></i> ⚡ Auto Split dari Whisper (FULL)
             </div>
             <div class="flex flex-wrap gap-2 items-center">
-              <button class="btn btn-success flex-1" onclick="autoTranscribeFullVideo()" id="autoTranscribeBtn">
+              <button class="btn btn-success flex-1" onclick="autoTranscribeFull()" id="autoTranscribeBtn">
                 <i class="fas fa-magic mr-1"></i> Transkrip FULL & Buat Segmen
               </button>
               <span class="text-xs text-gray-400">1x request</span>
@@ -137,15 +153,20 @@
               <span>🧠 Whisper otomatis deteksi batas kalimat</span>
             </div>
             <div id="autoProgress" class="text-xs mt-1 hidden"></div>
+            
+            <!-- TIPS -->
+            <div class="tip-box text-xs text-gray-300 mt-2">
+              <i class="fas fa-lightbulb text-yellow-400 mr-1"></i>
+              Tips: Video hingga ~15 menit bisa langsung diproses. Audio otomatis dioptimasi (mono + 16kHz) agar ukuran kecil.
+            </div>
           </div>
 
-          <!-- PEMISAH -->
           <div class="border-t border-[#2d3748] my-3"></div>
 
-          <!-- ====== OPSI 1: MANUAL (LAMA) ====== -->
+          <!-- OPSI MANUAL -->
           <div>
             <div class="label text-blue-400">
-              <i class="fas fa-hand-pointer mr-1"></i> Opsi 1: Manual (Edit per Segmen)
+              <i class="fas fa-hand-pointer mr-1"></i> Opsi Manual (Edit per Segmen)
             </div>
             <div class="flex flex-wrap gap-2 mb-3">
               <button class="btn btn-sm btn-primary" onclick="addSegment()"><i class="fas fa-plus mr-1"></i> Tambah</button>
@@ -155,7 +176,6 @@
               <button class="btn btn-sm btn-success" onclick="transcribeSelected()"><i class="fas fa-microphone mr-1"></i> Transkripsi</button>
             </div>
             
-            <!-- API Key -->
             <div class="api-section">
               <div class="label"><i class="fas fa-microphone mr-1"></i> API Key Transkripsi (Groq Whisper)</div>
               <input id="transcribeApiKey" type="password" placeholder="Masukkan Groq API Key" class="text-sm" />
@@ -201,7 +221,10 @@
   // ========== STATE ==========
   let segments = [];
   let videoFile = null;
+  let audioFile = null;
   let videoURL = null;
+  let audioURL = null;
+  let isAudioMode = false;
   let overlayMode = 'both';
   let currentSegId = null;
   let segCounter = 0;
@@ -215,6 +238,8 @@
   const timelineEl = document.getElementById('timelineContainer');
   const segCountEl = document.getElementById('segCount');
   const statusEl = document.getElementById('translationStatus');
+  const modeIndicator = document.getElementById('modeIndicator');
+  const modeText = document.getElementById('modeText');
 
   // ========== AUTOSAVE ==========
   function autosave() {
@@ -227,15 +252,85 @@
     const file = e.target.files[0];
     if (!file) return;
     videoFile = file;
+    audioFile = null;
+    isAudioMode = false;
+    
     if (videoURL) URL.revokeObjectURL(videoURL);
     videoURL = URL.createObjectURL(file);
     video.src = videoURL;
     video.load();
+    
+    showModeIndicator('video', file.name);
+    
     video.onloadedmetadata = () => {
       timeDisplay.textContent = formatTime(0) + ' / ' + formatTime(video.duration);
       updateVideoDuration();
+      
+      // Estimasi ukuran audio setelah optimasi
+      const estSizeMB = (video.duration / 60) * 1.5; // ~1.5MB per menit
+      if (estSizeMB > 24) {
+        setStatus(`⚠️ Video panjang (${Math.round(video.duration/60)} menit). Estimasi audio ~${Math.round(estSizeMB)} MB. Mungkin perlu kompresi ekstra.`, 'error');
+      } else {
+        setStatus(`✅ Video siap diproses. Estimasi audio ~${Math.round(estSizeMB)} MB.`, 'success');
+      }
     };
     autosave();
+  }
+
+  // ========== LOAD AUDIO ==========
+  function loadAudio(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const validTypes = ['audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/aac', 'audio/ogg'];
+    if (!validTypes.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a|aac|ogg)$/i)) {
+      alert('❌ Silakan upload file audio (MP3, WAV, M4A, AAC, OGG)');
+      return;
+    }
+    
+    const sizeMB = file.size / (1024 * 1024);
+    if (sizeMB > 25) {
+      alert(`❌ File terlalu besar (${sizeMB.toFixed(1)} MB). Maks 25 MB.`);
+      return;
+    }
+    
+    audioFile = file;
+    videoFile = null;
+    isAudioMode = true;
+    
+    if (audioURL) URL.revokeObjectURL(audioURL);
+    audioURL = URL.createObjectURL(file);
+    video.src = audioURL;
+    video.load();
+    
+    showModeIndicator('audio', file.name);
+    
+    video.onloadedmetadata = () => {
+      timeDisplay.textContent = formatTime(0) + ' / ' + formatTime(video.duration);
+      updateVideoDuration();
+      setStatus(`✅ Audio "${file.name}" dimuat (${sizeMB.toFixed(2)} MB)`, 'success');
+    };
+    
+    if (segments.length > 0) {
+      if (confirm('⚠️ Ini akan menghapus segmen yang ada. Lanjutkan?')) {
+        segments = [];
+        segCounter = 0;
+        renderAll();
+      }
+    }
+    
+    autosave();
+  }
+
+  function showModeIndicator(mode, filename) {
+    modeIndicator.classList.remove('hidden', 'mode-audio', 'mode-video');
+    if (mode === 'audio') {
+      modeIndicator.classList.add('mode-audio');
+      modeText.textContent = `🎵 Audio: ${filename}`;
+    } else if (mode === 'video') {
+      modeIndicator.classList.add('mode-video');
+      modeText.textContent = `🎬 Video: ${filename}`;
+    }
   }
 
   function togglePlay() {
@@ -432,27 +527,24 @@
     });
   }
 
-  // ========== COPY JSON (FORMAT SESUAI KEINGINAN) ==========
+  // ========== COPY JSON (KEY: 'text') ==========
   function copyJSON() {
     if (segments.length === 0) {
       alert('Tidak ada segmen untuk diekspor.');
       return;
     }
     
-    // Format JSON persis seperti yang diminta: start, end, original
     const jsonData = segments.map(seg => ({
       start: seg.start,
       end: seg.end,
-      original: seg.original || ''
+      text: seg.original || ''
     }));
     
     const jsonString = JSON.stringify(jsonData, null, 2);
     
-    // Update preview
     document.getElementById('jsonPreview').textContent = jsonString;
     document.getElementById('jsonPreview').className = 'json-preview text-green-300';
     
-    // Copy ke clipboard
     navigator.clipboard.writeText(jsonString).then(() => {
       const btn = document.querySelector('[onclick="copyJSON()"]');
       if (btn) {
@@ -467,7 +559,6 @@
         }, 2000);
       }
     }).catch(() => {
-      // Fallback
       const textarea = document.createElement('textarea');
       textarea.value = jsonString;
       document.body.appendChild(textarea);
@@ -498,7 +589,7 @@
     const jsonData = segments.map(seg => ({
       start: seg.start,
       end: seg.end,
-      original: seg.original || ''
+      text: seg.original || ''
     }));
     
     previewEl.textContent = JSON.stringify(jsonData, null, 2);
@@ -562,58 +653,11 @@
 
   function escHtml(str) { return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-  // ========== TRANSCRIPTION with WebCodecs ==========
-  async function transcribeSelected() {
-    if (isProcessing) return;
-    if (!videoFile) return alert('Upload video terlebih dahulu.');
-
-    const selected = segments.filter(s => s.selected);
-    if (selected.length === 0) {
-      alert('Pilih segmen yang akan ditranskripsi (centang checkbox).');
-      return;
-    }
-
-    const key = document.getElementById('transcribeApiKey').value.trim();
-    if (!key) return alert('Masukkan Groq API Key untuk transkripsi.');
-
-    if (!('AudioDecoder' in window) || !('VideoDecoder' in window)) {
-      alert('Browser Anda tidak mendukung WebCodecs. Gunakan Chrome/Edge terbaru.');
-      return;
-    }
-
-    isProcessing = true;
-    let successCount = 0;
-    let failCount = 0;
-
-    for (let seg of selected) {
-      seg._processing = true;
-      renderAll();
-      try {
-        const audioBlob = await extractAudioWithWebCodecs(seg.start, seg.end);
-        const transcribed = await transcribeAudio(audioBlob, key);
-        seg.original = transcribed;
-        seg._processing = false;
-        successCount++;
-        renderAll();
-      } catch (error) {
-        seg._processing = false;
-        seg.original = `[Error: ${error.message}]`;
-        failCount++;
-        renderAll();
-      }
-      await sleep(500);
-    }
-
-    isProcessing = false;
-    setStatus(`✅ Transkripsi selesai: ${successCount} berhasil, ${failCount} gagal.`, successCount > 0 ? 'success' : 'error');
-    autosave();
-  }
-
-  async function extractAudioWithWebCodecs(start, end) {
+  // ========== EKSTRAK AUDIO DENGAN OPTIMASI (MONO + 16kHz) ==========
+  async function extractAudioOptimized(start, end) {
     return new Promise(async (resolve, reject) => {
       try {
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const source = audioContext.createBufferSource();
         
         const response = await fetch(videoURL);
         const arrayBuffer = await response.arrayBuffer();
@@ -623,6 +667,67 @@
         const startSample = Math.floor(start * sampleRate);
         const endSample = Math.floor(end * sampleRate);
         const length = endSample - startSample;
+        
+        if (length <= 0) {
+          throw new Error('Durasi segmen tidak valid');
+        }
+        
+        const channels = audioBuffer.numberOfChannels;
+        
+        // STEP 1: Konversi ke MONO
+        const monoBuffer = audioContext.createBuffer(1, length, sampleRate);
+        const monoData = monoBuffer.getChannelData(0);
+        
+        for (let i = 0; i < length; i++) {
+          let sum = 0;
+          for (let ch = 0; ch < channels; ch++) {
+            const data = audioBuffer.getChannelData(ch);
+            const idx = startSample + i;
+            sum += data[Math.min(idx, data.length - 1)] || 0;
+          }
+          monoData[i] = sum / channels;
+        }
+        
+        // STEP 2: Downsample ke 16000 Hz
+        const targetRate = 16000;
+        const ratio = sampleRate / targetRate;
+        const newLength = Math.floor(length / ratio);
+        const downsampledBuffer = audioContext.createBuffer(1, newLength, targetRate);
+        const downsampledData = downsampledBuffer.getChannelData(0);
+        
+        for (let i = 0; i < newLength; i++) {
+          const srcIdx = Math.floor(i * ratio);
+          downsampledData[i] = monoData[Math.min(srcIdx, monoData.length - 1)] || 0;
+        }
+        
+        // STEP 3: Ekspor ke WAV (sudah kecil)
+        const wavBlob = bufferToWav(downsampledBuffer);
+        await audioContext.close();
+        
+        resolve(wavBlob);
+        
+      } catch (error) {
+        reject(new Error(`Gagal ekstrak audio: ${error.message}`));
+      }
+    });
+  }
+
+  // ========== EKSTRAK AUDIO UNTUK SEGMEN (dari video atau audio) ==========
+  async function extractAudioFromFile(file, start, end) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const arrayBuffer = await file.arrayBuffer();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        
+        const sampleRate = audioBuffer.sampleRate;
+        const startSample = Math.floor(start * sampleRate);
+        const endSample = Math.floor(end * sampleRate);
+        const length = endSample - startSample;
+        
+        if (length <= 0) {
+          throw new Error('Durasi segmen tidak valid');
+        }
         
         const channels = audioBuffer.numberOfChannels;
         const newBuffer = audioContext.createBuffer(channels, length, sampleRate);
@@ -637,7 +742,29 @@
           }
         }
         
-        const wavBlob = bufferToWav(newBuffer);
+        // Konversi ke mono + downsample untuk ukuran kecil
+        const monoBuffer = audioContext.createBuffer(1, length, sampleRate);
+        const monoData = monoBuffer.getChannelData(0);
+        for (let i = 0; i < length; i++) {
+          let sum = 0;
+          for (let ch = 0; ch < channels; ch++) {
+            sum += newBuffer.getChannelData(ch)[i] || 0;
+          }
+          monoData[i] = sum / channels;
+        }
+        
+        const targetRate = 16000;
+        const ratio = sampleRate / targetRate;
+        const newLength2 = Math.floor(length / ratio);
+        const downsampledBuffer = audioContext.createBuffer(1, newLength2, targetRate);
+        const downsampledData = downsampledBuffer.getChannelData(0);
+        for (let i = 0; i < newLength2; i++) {
+          const srcIdx = Math.floor(i * ratio);
+          downsampledData[i] = monoData[Math.min(srcIdx, monoData.length - 1)] || 0;
+        }
+        
+        const wavBlob = bufferToWav(downsampledBuffer);
+        await audioContext.close();
         resolve(wavBlob);
       } catch (error) {
         reject(new Error(`Gagal ekstrak audio: ${error.message}`));
@@ -645,6 +772,7 @@
     });
   }
 
+  // ========== BUFFER TO WAV ==========
   function bufferToWav(buffer) {
     const numChannels = buffer.numberOfChannels;
     const sampleRate = buffer.sampleRate;
@@ -693,6 +821,61 @@
     }
   }
 
+  // ========== TRANSCRIPTION ==========
+  async function transcribeSelected() {
+    if (isProcessing) return;
+    if (!videoFile && !audioFile) return alert('Upload video atau audio terlebih dahulu.');
+
+    const selected = segments.filter(s => s.selected);
+    if (selected.length === 0) {
+      alert('Pilih segmen yang akan ditranskripsi (centang checkbox).');
+      return;
+    }
+
+    const key = document.getElementById('transcribeApiKey').value.trim();
+    if (!key) return alert('Masukkan Groq API Key untuk transkripsi.');
+
+    if (!('AudioDecoder' in window) || !('VideoDecoder' in window)) {
+      alert('Browser Anda tidak mendukung WebCodecs. Gunakan Chrome/Edge terbaru.');
+      return;
+    }
+
+    isProcessing = true;
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let seg of selected) {
+      seg._processing = true;
+      renderAll();
+      try {
+        let audioBlob;
+        if (isAudioMode && audioFile) {
+          audioBlob = await extractAudioFromFile(audioFile, seg.start, seg.end);
+        } else if (videoFile) {
+          audioBlob = await extractAudioOptimized(seg.start, seg.end);
+        } else {
+          throw new Error('Tidak ada file audio atau video.');
+        }
+        
+        const transcribed = await transcribeAudio(audioBlob, key);
+        seg.original = transcribed;
+        seg._processing = false;
+        successCount++;
+        renderAll();
+      } catch (error) {
+        seg._processing = false;
+        seg.original = `[Error: ${error.message}]`;
+        failCount++;
+        renderAll();
+      }
+      await sleep(500);
+    }
+
+    isProcessing = false;
+    setStatus(`✅ Transkripsi selesai: ${successCount} berhasil, ${failCount} gagal.`, successCount > 0 ? 'success' : 'error');
+    autosave();
+  }
+
   async function transcribeAudio(audioBlob, apiKey) {
     const formData = new FormData();
     formData.append('file', audioBlob, 'segment.wav');
@@ -717,10 +900,12 @@
     return text.trim();
   }
 
-  // ========== AUTO TRANSCRIBE FULL VIDEO ==========
-  async function autoTranscribeFullVideo() {
+  // ========== AUTO TRANSCRIBE FULL (OPTIMIZED) ==========
+  async function autoTranscribeFull() {
     if (isProcessing) return;
-    if (!videoFile) return alert('📹 Upload video terlebih dahulu!');
+    if (!videoFile && !audioFile) {
+      return alert('📹 Upload video ATAU audio terlebih dahulu!');
+    }
     
     const key = document.getElementById('transcribeApiKey').value.trim();
     if (!key) return alert('🔑 Masukkan Groq API Key untuk transkripsi.');
@@ -740,16 +925,43 @@
     progressEl.classList.remove('hidden');
     
     try {
-      progressEl.innerHTML = '⏳ 1/3: Mengekstrak audio dari video...';
-      progressEl.className = 'text-xs mt-1 status-bar status-progress';
+      let audioBlob;
+      let fileExtension = 'wav';
       
-      const audioBlob = await extractAudioWithWebCodecs(0, video.duration);
+      if (isAudioMode && audioFile) {
+        // === MODE AUDIO: Kirim file ASLI ===
+        progressEl.innerHTML = '⏳ 1/2: Menggunakan file audio langsung...';
+        progressEl.className = 'text-xs mt-1 status-bar status-progress';
+        
+        audioBlob = audioFile;
+        const ext = audioFile.name.split('.').pop().toLowerCase();
+        fileExtension = ['mp3','wav','m4a','aac','ogg'].includes(ext) ? ext : 'wav';
+        
+      } else if (videoFile) {
+        // === MODE VIDEO: Ekstrak dengan OPTIMASI (MONO + 16kHz) ===
+        progressEl.innerHTML = '⏳ 1/3: Mengekstrak & mengoptimasi audio (mono + 16kHz)...';
+        progressEl.className = 'text-xs mt-1 status-bar status-progress';
+        
+        audioBlob = await extractAudioOptimized(0, video.duration);
+        fileExtension = 'wav';
+        
+        const sizeMB = audioBlob.size / (1024 * 1024);
+        progressEl.innerHTML = `⏳ Audio ${sizeMB.toFixed(2)} MB (optimal)`;
+        
+      } else {
+        throw new Error('Tidak ada file video atau audio yang dimuat.');
+      }
       
-      progressEl.innerHTML = '⏳ 2/3: Mentranskripsi audio dengan Whisper (butuh ~5-10 detik)...';
-      const result = await transcribeFullAudio(audioBlob, key);
+      // Cek ukuran audio
+      const sizeMB = audioBlob.size / (1024 * 1024);
+      if (sizeMB > 25) {
+        throw new Error(`❌ Audio terlalu besar (${sizeMB.toFixed(1)} MB). Maks 25 MB.`);
+      }
       
-      progressEl.innerHTML = '⏳ 3/3: Membuat segmen dari hasil transkripsi...';
+      progressEl.innerHTML = `⏳ 2/2: Mentranskripsi audio (${sizeMB.toFixed(2)} MB)...`;
+      const result = await transcribeFullAudio(audioBlob, key, fileExtension);
       
+      // Proses hasil transkripsi
       segments = [];
       segCounter = 0;
       
@@ -760,7 +972,6 @@
             addSegment(seg.start, seg.end, text, '');
           }
         });
-        
         const count = segments.length;
         progressEl.innerHTML = `✅ Selesai! ${count} segmen berhasil dibuat.`;
         progressEl.className = 'text-xs mt-1 status-bar status-success';
@@ -798,7 +1009,7 @@
       } else if (result.text) {
         progressEl.innerHTML = '⚠️ Tidak ada timestamp, membuat 1 segmen full video.';
         progressEl.className = 'text-xs mt-1 status-bar status-error';
-        addSegment(0, video.duration, result.text.trim(), '');
+        addSegment(0, video.duration || 30, result.text.trim(), '');
         setStatus('⚠️ Hanya 1 segmen (Whisper tidak mengembalikan timestamp)', 'error');
       } else {
         throw new Error('Tidak ada data dari Whisper');
@@ -817,14 +1028,14 @@
     document.getElementById('autoTranscribeBtn').disabled = false;
   }
 
-  async function transcribeFullAudio(audioBlob, apiKey) {
+  async function transcribeFullAudio(audioBlob, apiKey, fileExtension = 'wav') {
     const fileSizeMB = audioBlob.size / (1024 * 1024);
     if (fileSizeMB > 25) {
       throw new Error(`File audio terlalu besar (${fileSizeMB.toFixed(1)} MB). Maks 25 MB.`);
     }
     
     const formData = new FormData();
-    formData.append('file', audioBlob, 'full_video.wav');
+    formData.append('file', audioBlob, `full_video.${fileExtension}`);
     formData.append('model', 'whisper-large-v3');
     formData.append('language', 'zh');
     formData.append('response_format', 'verbose_json');
