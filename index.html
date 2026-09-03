@@ -1313,7 +1313,7 @@
 
     switch (api) {
       case 'gemini': {
-        url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+        url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${key}`;
         body = {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { temperature: 0.3, maxOutputTokens: 256 }
@@ -1353,7 +1353,7 @@
       case 'openrouter': {
         url = 'https://openrouter.ai/api/v1/chat/completions';
         body = {
-          model: 'google/gemini-2.5-flash',
+          model: 'google/gemini-3.5-flash',
           messages: [
             { role: 'system', content: 'Kamu adalah penerjemah bahasa Cina ke Indonesia. Berikan hanya terjemahan.' },
             { role: 'user', content: prompt }
