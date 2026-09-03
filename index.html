@@ -1307,7 +1307,7 @@
   }
 
   async function callTranslationAPI(api, key, text) {
-    const prompt = `Terjemahkan teks bahasa Cina berikut ke bahasa Indonesia. Berikan hanya terjemahannya, tanpa penjelasan tambahan.\n\nTeks: ${text}`;
+    const prompt = `Terjemahkan teks bahasa Cina berikut ke bahasa Indonesia untuk subtitle secara LENGKAP dan UTUH. JANGAN merangkum, JANGAN memotong, JANGAN menghilangkan bagian mana pun. Keluarkan HANYA terjemahan, tanpa penjelasan tambahan.\n\nTeks: ${text}`;
 
     let url, body, headers;
 
@@ -1336,7 +1336,7 @@
             { role: 'user', content: prompt }
           ],
           temperature: 0.3,
-          max_tokens: 256
+          max_tokens: 1024  
         };
         headers = {
           'Content-Type': 'application/json',
@@ -1359,7 +1359,7 @@
             { role: 'user', content: prompt }
           ],
           temperature: 0.3,
-          max_tokens: 256
+          max_tokens: 1024  
         };
         headers = {
           'Content-Type': 'application/json',
