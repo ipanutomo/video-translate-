@@ -1306,80 +1306,107 @@
     autosave();
   }
 
-  async function callTranslationAPI(api, key, text) {
-    const prompt = `Terjemahkan teks bahasa Cina berikut ke bahasa Indonesia untuk subtitle secara LENGKAP dan UTUH. JANGAN merangkum, JANGAN memotong, JANGAN menghilangkan bagian mana pun. Keluarkan HANYA terjemahan, tanpa penjelasan tambahan.\n\nTeks: ${text}`;
+async function callTranslationAPI(api, key, text) {
+  const prompt = `Terjemahkan teks bahasa Cina berikut ke bahasa Indonesia untuk subtitle.
 
-    let url, body, headers;
+Aturan:
+1. Terjemahkan SECARA LENGKAP (jangan diringkas)
+2. Gunakan bahasa yang natural dan mengalir (seperti percakapan sehari-hari)
+3. Jangan terlalu kaku/formal
+4. Jangan tambahkan penjelasan
+5. Hanya keluarkan hasil terjemahan saja
 
-    switch (api) {
-      case 'gemini': {
-        url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${key}`;
-        body = {
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 256 }
-        };
-        headers = { 'Content-Type': 'application/json' };
-        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-        if (!response.ok) {
-          const err = await response.text();
-          throw new Error(`Gemini API error: ${response.status} - ${err}`);
-        }
-        const data = await response.json();
-        return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-      }
-      case 'groq': {
-        url = 'https://api.groq.com/openai/v1/chat/completions';
-        body = {
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            { role: 'system', content: 'Kamu adalah penerjemah bahasa Cina ke Indonesia. Berikan hanya terjemahan.' },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.3,
-          max_tokens: 1024  
-        };
-        headers = {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${key}`
-        };
-        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-        if (!response.ok) {
-          const err = await response.text();
-          throw new Error(`Groq API error: ${response.status} - ${err}`);
-        }
-        const data = await response.json();
-        return data?.choices?.[0]?.message?.content?.trim() || '';
-      }
-      case 'openrouter': {
-        url = 'https://openrouter.ai/api/v1/chat/completions';
-        body = {
-          model: 'google/gemini-3.5-flash',
-          messages: [
-            { role: 'system', content: 'Kamu adalah penerjemah bahasa Cina ke Indonesia. Berikan hanya terjemahan.' },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.3,
-          max_tokens: 1024  
-        };
-        headers = {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${key}`,
-          'HTTP-Referer': window.location.href,
-          'X-Title': 'Local Subtitle Editor'
-        };
-        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-        if (!response.ok) {
-          const err = await response.text();
-          throw new Error(`OpenRouter API error: ${response.status} - ${err}`);
-        }
-        const data = await response.json();
-        return data?.choices?.[0]?.message?.content?.trim() || '';
-      }
-      default:
-        throw new Error('API tidak dikenal');
+Teks:
+${text}`;
+
+  let url, body, headers;
+
+  switch (api) {
+    case 'qwen': {
+      // Qwen via Groq (Rekomendasi)
+      url = 'https://api.groq.com/openai/v1/chat/completions';
+      body = {
+        model: 'qwen/qwen3.8-27b',
+        messages: [
+          {
+            role: 'system',
+            content: `Kamu adalah penerjemah profesional subtitle Cina ke Indonesia.
+Aturan ketat:
+- Terjemahkan secara LENGKAP dan NATURAL
+- Gunakan bahasa Indonesia yang santai dan mudah dipahami
+- Jangan terlalu formal
+- Jangan menambah atau mengurangi makna
+- Jangan berikan penjelasan, hanya terjemahan saja`
+          },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.2,
+        max_tokens: 1024
+      };
+      headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`
+      };
+      break;
     }
+
+    case 'groq': {
+      // Llama versi lama (cadangan)
+      url = 'https://api.groq.com/openai/v1/chat/completions';
+      body = {
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: 'Kamu adalah penerjemah bahasa Cina ke Indonesia. Berikan hanya terjemahan.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 1024
+      };
+      headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`
+      };
+      break;
+    }
+
+    case 'openrouter': {
+      url = 'https://openrouter.ai/api/v1/chat/completions';
+      body = {
+        model: 'google/gemini-2.0-flash',
+        messages: [
+          { role: 'system', content: 'Kamu adalah penerjemah bahasa Cina ke Indonesia. Berikan hanya terjemahan.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 1024
+      };
+      headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`,
+        'HTTP-Referer': window.location.href,
+        'X-Title': 'Local Subtitle Editor'
+      };
+      break;
+    }
+
+    default:
+      throw new Error('API tidak dikenal');
   }
 
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`${api} API error: ${response.status} - ${err}`);
+  }
+
+  const data = await response.json();
+  return data?.choices?.[0]?.message?.content?.trim() || '';
+}
   function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
   function setStatus(msg, type = 'info') {
