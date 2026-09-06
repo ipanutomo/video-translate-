@@ -73,6 +73,55 @@
     #segmentList {
       overscroll-behavior: contain; /* Smooth scrolling */
     }
+    /* FIX: Grid item harus punya min-width: 0 agar tidak melebarkan grid */
+.grid > * {
+    min-width: 0;
+}
+
+/* FIX: video-container dan video terkekang ke viewport */
+.video-container {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+video {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    min-width: 0;
+}
+
+/* FIX: body/html tidak boleh horizontal overflow */
+html, body {
+    overflow-x: hidden;
+    max-width: 100%;
+}
+
+/* FIX: #app tidak boleh keluar viewport */
+#app {
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* FIX: timeline container tidak melebarkan parent */
+#timelineContainer {
+    max-width: 100%;
+    overflow-x: auto;
+    min-width: 0;
+}
+
+/* FIX: json-preview tidak melebarkan container */
+.json-preview {
+    max-width: 100%;
+    overflow-x: auto;
+}
   </style>
 </head>
 <body>
