@@ -233,6 +233,12 @@
             <button class="btn btn-sm btn-outline" onclick="selectAllSegments(false)"><i class="fas fa-times mr-1"></i> Batal</button>
           </div>
           
+          <!-- Di dalam step2Panel, setelah div dengan class "flex flex-wrap gap-2 mb-2" -->
+        <div class="flex flex-wrap gap-2 mb-2">
+          <button class="btn btn-sm btn-outline" onclick="selectEmptyTranslations()">
+            <i class="fas fa-sync mr-1"></i> ↻ Pilih Segmen Kosong/Error
+          </button>
+        </div>
           <div class="api-section">
             <div class="label"><i class="fas fa-language mr-1"></i> API Key Terjemahan</div>
             <div class="flex gap-2">
@@ -560,7 +566,42 @@
     if (seg) video.currentTime = seg.start;
     renderAll();
   }
-
+  
+// ========== SELECT EMPTY/ERROR TRANSLATIONS ==========
+function selectEmptyTranslations() {
+  // Cari semua segmen yang translation-nya kosong atau error
+  const emptyOrErrorSegs = segments.filter(seg => {
+    // Cek apakah translation kosong (null, undefined, empty string, atau hanya whitespace)
+    const isTranslationEmpty = !seg.translation || seg.translation.trim() === '';
+    
+    // Cek apakah translation mengandung indikasi error dari sistem
+    // Format error yang digunakan oleh sistem: "[Error: ...]" atau "[Teks kosong]"
+    const isTranslationError = seg.translation && (
+      seg.translation.startsWith('[Error:') ||
+      seg.translation === '[Teks kosong]'
+    );
+    
+    return isTranslationEmpty || isTranslationError;
+  });
+  
+  // Jika tidak ada segmen yang ditemukan
+  if (emptyOrErrorSegs.length === 0) {
+    setStatus('Tidak ada segmen dengan terjemahan kosong/error.', 'info');
+    return;
+  }
+  
+  // Unselect semua segmen terlebih dahulu
+  segments.forEach(s => s.selected = false);
+  
+  // Select segmen yang ditemukan
+  emptyOrErrorSegs.forEach(seg => seg.selected = true);
+  
+  // Render ulang untuk update UI
+  renderAll();
+  
+  // Tampilkan pesan sukses
+  setStatus(`${emptyOrErrorSegs.length} segmen kosong/error berhasil dipilih.`, 'success');
+}
   // ========== COPY FUNCTION ==========
   function copyText(id, field) {
     const seg = segments.find(s => s.id === id);
