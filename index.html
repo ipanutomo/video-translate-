@@ -1162,8 +1162,6 @@ async function aiReSplitSelected() {
       formData.append('file', audioBlob, 'resplit.wav');
       formData.append('model', 'whisper-large-v3');
       formData.append('language', 'zh');
-      formData.append( 'prompt',
-      'Transcribe exactly as spoken. The audio may contain Mandarin mixed with Indonesian or English. Do not translate. Preserve non-Mandarin words in their original language.');
       formData.append('response_format', 'verbose_json');
       formData.append('timestamp_granularities[]', 'segment');
 
