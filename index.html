@@ -137,18 +137,6 @@
         <div id="timelineContainer" class="timeline"></div>
       </div>
       
-      <!-- Preview JSON -->
-      <div class="card">
-        <div class="flex justify-between items-center mb-1">
-          <span class="text-xs font-semibold"><i class="fas fa-code mr-1 text-green-400"></i> Preview JSON</span>
-          <div class="flex gap-2">
-            <button class="btn btn-xs btn-outline" onclick="copyJSON()"><i class="fas fa-copy mr-1"></i> Copy JSON</button>
-            <!-- TOMBOL BARU di section JSON Preview juga -->
-            <button class="btn btn-xs btn-purple" onclick="copyJSONWithPrompt()"><i class="fas fa-robot mr-1"></i> + Prompt AI</button>
-          </div>
-        </div>
-        <div id="jsonPreview" class="json-preview text-gray-400">[ Belum ada segmen ]</div>
-      </div>
     </div>
 
     <!-- RIGHT: Tabs -->
@@ -261,6 +249,34 @@
       </div>
     </div>
   </div>
+
+  <!-- ===== JSON PREVIEW — paling bawah, full width ===== -->
+  <div class="card mt-4">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+      <span class="text-xs font-semibold whitespace-nowrap"><i class="fas fa-code mr-1 text-green-400"></i> Preview JSON</span>
+
+      <!-- SWITCH: mode tampilan JSON -->
+      <div class="flex items-center gap-1 flex-wrap">
+        <button
+          id="jsonSwitchAB"
+          onclick="setJsonDisplayMode('original_first')"
+          class="json-switch-btn active-switch text-[11px] px-3 py-1 rounded-full border border-[#3b82f6] bg-[#1e3a5f] text-blue-300 font-semibold transition-all cursor-pointer"
+        >Transkrip → Terjemahan</button>
+        <button
+          id="jsonSwitchBA"
+          onclick="setJsonDisplayMode('translation_first')"
+          class="json-switch-btn text-[11px] px-3 py-1 rounded-full border border-[#3b465c] bg-transparent text-gray-400 font-semibold transition-all cursor-pointer"
+        >Terjemahan → Transkrip</button>
+      </div>
+
+      <!-- Tombol aksi -->
+      <div class="flex gap-2 flex-shrink-0">
+        <button class="btn btn-xs btn-outline" onclick="copyJSON()"><i class="fas fa-copy mr-1"></i> Copy JSON</button>
+        <button class="btn btn-xs btn-purple" onclick="copyJSONWithPrompt()"><i class="fas fa-robot mr-1"></i> + Prompt AI</button>
+      </div>
+    </div>
+    <div id="jsonPreview" class="json-preview text-gray-400">[ Belum ada segmen ]</div>
+  </div>
 </div>
 
 <!-- ===== MODAL PROMPT PREVIEW ===== -->
@@ -309,6 +325,26 @@
   let segCounter = 0;
   let isProcessing = false;
   
+  // ========== JSON DISPLAY MODE (switch Transkrip↔Terjemahan) ==========
+  // 'original_first'    → { text: original, text2: translation }
+  // 'translation_first' → { text: translation, text2: original }
+  let jsonDisplayMode = 'original_first';
+
+  function setJsonDisplayMode(mode) {
+    jsonDisplayMode = mode;
+    // Update tampilan tombol switch
+    const btnAB = document.getElementById('jsonSwitchAB');
+    const btnBA = document.getElementById('jsonSwitchBA');
+    if (mode === 'original_first') {
+      btnAB.className = 'json-switch-btn text-[11px] px-3 py-1 rounded-full border border-[#3b82f6] bg-[#1e3a5f] text-blue-300 font-semibold transition-all cursor-pointer';
+      btnBA.className = 'json-switch-btn text-[11px] px-3 py-1 rounded-full border border-[#3b465c] bg-transparent text-gray-400 font-semibold transition-all cursor-pointer';
+    } else {
+      btnAB.className = 'json-switch-btn text-[11px] px-3 py-1 rounded-full border border-[#3b465c] bg-transparent text-gray-400 font-semibold transition-all cursor-pointer';
+      btnBA.className = 'json-switch-btn text-[11px] px-3 py-1 rounded-full border border-[#a78bfa] bg-[#2e1065] text-purple-300 font-semibold transition-all cursor-pointer';
+    }
+    updateJSONPreview();
+  }
+
   // ========== PERFORMANCE OPTIMIZATION ==========
   let renderTimeout = null;
   let isRendering = false;
@@ -792,9 +828,16 @@ ${jsonString}`;
   function updateJSONPreview() {
     const previewEl = document.getElementById('jsonPreview');
     if (segments.length === 0) { previewEl.textContent = '[ Belum ada segmen ]'; previewEl.className = 'json-preview text-gray-400'; return; }
-    const jsonData = segments.map(seg => ({ start: seg.start, end: seg.end, text: seg.original || '' }));
-    previewEl.textContent = JSON.stringify(jsonData, null, 2);
-    previewEl.className = 'json-preview text-green-300';
+    // Switch hanya menentukan nilai field text — tidak mengubah data asli
+    if (jsonDisplayMode === 'translation_first') {
+      const jsonData = segments.map(seg => ({ start: seg.start, end: seg.end, text: seg.translation || '' }));
+      previewEl.textContent = JSON.stringify(jsonData, null, 2);
+      previewEl.className = 'json-preview text-purple-300';
+    } else {
+      const jsonData = segments.map(seg => ({ start: seg.start, end: seg.end, text: seg.original || '' }));
+      previewEl.textContent = JSON.stringify(jsonData, null, 2);
+      previewEl.className = 'json-preview text-green-300';
+    }
   }
 
   // ========== RENDER SEGMENT LIST (OPTIMIZED) ==========
