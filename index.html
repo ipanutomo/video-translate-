@@ -200,6 +200,8 @@
               <div class="text-[10px] text-gray-500 mt-1">
                 <b style="color:#a78bfa;">Audio:</b> akurat tapi mungkin sama · <b style="color:#22d3ee;">Text:</b> cepat &amp; hemat, bagi proporsional
               </div>
+            <button class="btn btn-sm btn-primary" onclick="selectAllSegments(true)"><i class="fas fa-check-double mr-1"></i> Pilih Semua</button>
+            <button class="btn btn-sm btn-outline" onclick="selectAllSegments(false)"><i class="fas fa-times mr-1"></i> Batal</button>
             </div>
             <div id="aiReSplitProgress" class="text-xs mb-2 hidden"></div>
             
@@ -229,13 +231,11 @@
           <div class="flex flex-wrap gap-2 mb-2">
             <button class="btn btn-sm btn-primary" onclick="selectAllSegments(true)"><i class="fas fa-check-double mr-1"></i> Pilih Semua</button>
             <button class="btn btn-sm btn-outline" onclick="selectAllSegments(false)"><i class="fas fa-times mr-1"></i> Batal</button>
-          </div>
-          
-          <div class="flex flex-wrap gap-2 mb-2">
             <button class="btn btn-sm btn-outline" onclick="selectEmptyTranslations()">
               <i class="fas fa-sync mr-1"></i> ↻ Pilih Segmen Kosong/Error
             </button>
           </div>
+          
           <div class="api-section">
             <div class="label"><i class="fas fa-language mr-1"></i> API Key Terjemahan</div>
             <div class="flex gap-2">
