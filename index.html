@@ -240,7 +240,7 @@
             <div class="label"><i class="fas fa-language mr-1"></i> API Key Terjemahan</div>
             <div class="flex gap-2">
               <select id="translateApiSelect" class="api-select rounded-lg p-1 text-sm flex-1">
-                <option value="gemini">Google Gemini</option>
+                <option value="qwen">Qwen 3.8B</option>
                 <option value="groq">Groq (LLM)</option>
                 <option value="openrouter">OpenRouter</option>
               </select>
@@ -1592,7 +1592,7 @@ ${seg.original}`;
     const prompt = `Terjemahkan teks bahasa Cina berikut ke bahasa Indonesia untuk subtitle secara LENGKAP dan UTUH. JANGAN merangkum, JANGAN memotong, JANGAN menghilangkan bagian mana pun. Keluarkan HANYA terjemahan, tanpa penjelasan tambahan.\n\nTeks: ${text}`;
     let url, body, headers;
     switch (api) {
-      case 'gemini': {
+      case 'qwen': {
         url = 'https://api.groq.com/openai/v1/chat/completions';
         body = { model: 'qwen/qwen3.8-27b', messages: [{ role: 'system', content: `Kamu adalah penerjemah profesional subtitle Cina ke Indonesia.\nAturan ketat:\n- Terjemahkan secara LENGKAP dan NATURAL\n- Gunakan bahasa Indonesia yang santai dan mudah dipahami\n- Jangan terlalu formal\n- Jangan menambah atau mengurangi makna\n- Jangan berikan penjelasan, hanya terjemahan saja` }, { role: 'user', content: prompt }], temperature: 0.2, max_tokens: 1024 };
         headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` };
