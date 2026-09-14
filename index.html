@@ -101,7 +101,6 @@
       <button class="btn btn-outline" onclick="saveProject()"><i class="fas fa-save mr-1"></i> Save</button>
       <button class="btn btn-outline" onclick="loadProject()"><i class="fas fa-folder-open mr-1"></i> Load</button>
       <button class="btn btn-outline" onclick="copyJSON()"><i class="fas fa-code mr-1"></i> Copy JSON</button>
-      <!-- TOMBOL BARU: Copy JSON + Prompt -->
       <button class="btn btn-purple" id="copyWithPromptBtn" onclick="copyJSONWithPrompt()"><i class="fas fa-robot mr-1"></i> Copy + Prompt AI</button>
     </div>
   </header>
@@ -204,7 +203,18 @@
             </div>
             <div id="aiReSplitProgress" class="text-xs mb-2 hidden"></div>
             
+            <!-- ===== BAHASA SUMBER + API KEY (digabung dalam 1 api-section) ===== -->
             <div class="api-section">
+              <div class="label"><i class="fas fa-globe mr-1"></i> Bahasa Sumber Audio</div>
+              <select id="sourceLanguageSelect"
+                      class="api-select rounded-lg p-1 text-sm w-full mb-2"
+                      onchange="setSourceLanguage(this.value)">
+                <option value="zh" selected>&#127464;&#127475; Mandarin (default)</option>
+                <option value="en">&#127468;&#127463; English</option>
+                <option value="id">&#127470;&#127465; Indonesia</option>
+              </select>
+              <div class="text-xs text-gray-500 mb-2">Bahasa yang dideteksi Whisper. Mandarin tetap default.</div>
+
               <div class="label"><i class="fas fa-microphone mr-1"></i> API Key Transkripsi (Groq Whisper)</div>
               <input id="transcribeApiKey" type="password" placeholder="Masukkan Groq API Key" class="text-sm" />
               <div class="text-xs text-gray-500 mt-1">Dapatkan gratis di <a href="https://console.groq.com" target="_blank" class="text-blue-400">console.groq.com</a></div>
@@ -221,12 +231,11 @@
             <button class="btn btn-sm btn-outline" onclick="selectAllSegments(false)"><i class="fas fa-times mr-1"></i> Batal</button>
           </div>
           
-          <!-- Di dalam step2Panel, setelah div dengan class "flex flex-wrap gap-2 mb-2" -->
-        <div class="flex flex-wrap gap-2 mb-2">
-          <button class="btn btn-sm btn-outline" onclick="selectEmptyTranslations()">
-            <i class="fas fa-sync mr-1"></i> ↻ Pilih Segmen Kosong/Error
-          </button>
-        </div>
+          <div class="flex flex-wrap gap-2 mb-2">
+            <button class="btn btn-sm btn-outline" onclick="selectEmptyTranslations()">
+              <i class="fas fa-sync mr-1"></i> ↻ Pilih Segmen Kosong/Error
+            </button>
+          </div>
           <div class="api-section">
             <div class="label"><i class="fas fa-language mr-1"></i> API Key Terjemahan</div>
             <div class="flex gap-2">
@@ -255,7 +264,6 @@
     <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
       <span class="text-xs font-semibold whitespace-nowrap"><i class="fas fa-code mr-1 text-green-400"></i> Preview JSON</span>
 
-      <!-- SWITCH: mode tampilan JSON -->
       <div class="flex items-center gap-1 flex-wrap">
         <button
           id="jsonSwitchAB"
@@ -269,7 +277,6 @@
         >Terjemahan → Transkrip</button>
       </div>
 
-      <!-- Tombol aksi -->
       <div class="flex gap-2 flex-shrink-0">
         <button class="btn btn-xs btn-outline" onclick="copyJSON()"><i class="fas fa-copy mr-1"></i> Copy JSON</button>
         <button class="btn btn-xs btn-purple" onclick="copyJSONWithPrompt()"><i class="fas fa-robot mr-1"></i> + Prompt AI</button>
@@ -304,7 +311,6 @@
     
     <div id="promptCopyStatus" class="text-xs mt-2"></div>
     
-    <!-- Info tambahan -->
     <div class="tip-box mt-3 text-xs text-gray-300">
       <i class="fas fa-info-circle text-blue-400 mr-1"></i>
       <strong>Cara pakai:</strong> Copy → Buka Claude/ChatGPT → Paste → Kirim. AI akan terjemahkan, sensor konten sensitif, dan buatkan judul + deskripsi + tagar untuk kontenmu.
@@ -324,15 +330,20 @@
   let currentSegId = null;
   let segCounter = 0;
   let isProcessing = false;
+
+  // ========== SOURCE LANGUAGE ==========
+  function getSourceLanguage() {
+    return localStorage.getItem('sourceLanguage') || 'zh';
+  }
+  function setSourceLanguage(val) {
+    localStorage.setItem('sourceLanguage', val);
+  }
   
-  // ========== JSON DISPLAY MODE (switch Transkrip↔Terjemahan) ==========
-  // 'original_first'    → { text: original, text2: translation }
-  // 'translation_first' → { text: translation, text2: original }
+  // ========== JSON DISPLAY MODE ==========
   let jsonDisplayMode = 'original_first';
 
   function setJsonDisplayMode(mode) {
     jsonDisplayMode = mode;
-    // Update tampilan tombol switch
     const btnAB = document.getElementById('jsonSwitchAB');
     const btnBA = document.getElementById('jsonSwitchBA');
     if (mode === 'original_first') {
@@ -350,7 +361,6 @@
   let isRendering = false;
   let pendingRender = false;
 
-  // Simpan teks prompt+JSON yang siap dicopy
   let pendingPromptText = '';
 
   const video = document.getElementById('videoPlayer');
@@ -603,41 +613,28 @@
     renderAll();
   }
   
-// ========== SELECT EMPTY/ERROR TRANSLATIONS ==========
-function selectEmptyTranslations() {
-  // Cari semua segmen yang translation-nya kosong atau error
-  const emptyOrErrorSegs = segments.filter(seg => {
-    // Cek apakah translation kosong (null, undefined, empty string, atau hanya whitespace)
-    const isTranslationEmpty = !seg.translation || seg.translation.trim() === '';
+  // ========== SELECT EMPTY/ERROR TRANSLATIONS ==========
+  function selectEmptyTranslations() {
+    const emptyOrErrorSegs = segments.filter(seg => {
+      const isTranslationEmpty = !seg.translation || seg.translation.trim() === '';
+      const isTranslationError = seg.translation && (
+        seg.translation.startsWith('[Error:') ||
+        seg.translation === '[Teks kosong]'
+      );
+      return isTranslationEmpty || isTranslationError;
+    });
     
-    // Cek apakah translation mengandung indikasi error dari sistem
-    // Format error yang digunakan oleh sistem: "[Error: ...]" atau "[Teks kosong]"
-    const isTranslationError = seg.translation && (
-      seg.translation.startsWith('[Error:') ||
-      seg.translation === '[Teks kosong]'
-    );
+    if (emptyOrErrorSegs.length === 0) {
+      setStatus('Tidak ada segmen dengan terjemahan kosong/error.', 'info');
+      return;
+    }
     
-    return isTranslationEmpty || isTranslationError;
-  });
-  
-  // Jika tidak ada segmen yang ditemukan
-  if (emptyOrErrorSegs.length === 0) {
-    setStatus('Tidak ada segmen dengan terjemahan kosong/error.', 'info');
-    return;
+    segments.forEach(s => s.selected = false);
+    emptyOrErrorSegs.forEach(seg => seg.selected = true);
+    renderAll();
+    setStatus(`${emptyOrErrorSegs.length} segmen kosong/error berhasil dipilih.`, 'success');
   }
-  
-  // Unselect semua segmen terlebih dahulu
-  segments.forEach(s => s.selected = false);
-  
-  // Select segmen yang ditemukan
-  emptyOrErrorSegs.forEach(seg => seg.selected = true);
-  
-  // Render ulang untuk update UI
-  renderAll();
-  
-  // Tampilkan pesan sukses
-  setStatus(`${emptyOrErrorSegs.length} segmen kosong/error berhasil dipilih.`, 'success');
-}
+
   // ========== COPY FUNCTION ==========
   function copyText(id, field) {
     const seg = segments.find(s => s.id === id);
@@ -663,7 +660,7 @@ function selectEmptyTranslations() {
     });
   }
 
-  // ========== COPY JSON (original, tanpa prompt) ==========
+  // ========== COPY JSON ==========
   function copyJSON() {
     if (segments.length === 0) { alert('Tidak ada segmen untuk diekspor.'); return; }
     const jsonData = segments.map(seg => ({ start: seg.start, end: seg.end, text: seg.original || '' }));
@@ -689,7 +686,7 @@ function selectEmptyTranslations() {
     });
   }
 
-  // ========== COPY JSON + PROMPT (BARU) ==========
+  // ========== COPY JSON + PROMPT ==========
   function copyJSONWithPrompt() {
     if (segments.length === 0) {
       alert('Tidak ada segmen untuk diekspor. Silakan buat segmen terlebih dahulu.');
@@ -703,7 +700,6 @@ function selectEmptyTranslations() {
     }));
     const jsonString = JSON.stringify(jsonData, null, 2);
 
-    // Bangun teks prompt lengkap
     const promptText = 
 `Halo! Saya punya data subtitle dalam format JSON yang perlu kamu bantu proses. Berikut instruksinya:
 
@@ -745,10 +741,7 @@ Berikut data JSON subtitle yang perlu diproses:
 
 ${jsonString}`;
 
-    // Simpan untuk konfirmasi
     pendingPromptText = promptText;
-
-    // Tampilkan modal preview
     document.getElementById('promptModalPreview').textContent = promptText;
     document.getElementById('promptCopyStatus').textContent = '';
     document.getElementById('promptModal').classList.remove('hidden');
@@ -776,7 +769,6 @@ ${jsonString}`;
     navigator.clipboard.writeText(pendingPromptText).then(() => {
       doCopy(pendingPromptText);
     }).catch(() => {
-      // Fallback untuk browser yang tidak support clipboard API
       const textarea = document.createElement('textarea');
       textarea.value = pendingPromptText;
       textarea.style.position = 'fixed';
@@ -800,7 +792,6 @@ ${jsonString}`;
     pendingPromptText = '';
   }
 
-  // Tutup modal kalau klik overlay
   document.getElementById('promptModal').addEventListener('click', function(e) {
     if (e.target === this) closePromptModal();
   });
@@ -828,7 +819,6 @@ ${jsonString}`;
   function updateJSONPreview() {
     const previewEl = document.getElementById('jsonPreview');
     if (segments.length === 0) { previewEl.textContent = '[ Belum ada segmen ]'; previewEl.className = 'json-preview text-gray-400'; return; }
-    // Switch hanya menentukan nilai field text — tidak mengubah data asli
     if (jsonDisplayMode === 'translation_first') {
       const jsonData = segments.map(seg => ({ start: seg.start, end: seg.end, text: seg.translation || '' }));
       previewEl.textContent = JSON.stringify(jsonData, null, 2);
@@ -840,7 +830,7 @@ ${jsonString}`;
     }
   }
 
-  // ========== RENDER SEGMENT LIST (OPTIMIZED) ==========
+  // ========== RENDER SEGMENT LIST ==========
   function renderSegmentList() {
     const fragment = document.createDocumentFragment();
     if (segments.length === 0) {
@@ -890,7 +880,7 @@ ${jsonString}`;
     segmentListEl.appendChild(fragment);
   }
 
-  // ========== RENDER TIMELINE (OPTIMIZED) ==========
+  // ========== RENDER TIMELINE ==========
   function renderTimeline() {
     if (!video.duration) { timelineEl.innerHTML = ''; return; }
     const fragment = document.createDocumentFragment();
@@ -1069,7 +1059,6 @@ ${jsonString}`;
     if (selected.length === 0) { alert('Pilih segmen yang akan ditranskripsi (centang checkbox).'); return; }
     const key = document.getElementById('transcribeApiKey').value.trim();
     if (!key) return alert('Masukkan Groq API Key untuk transkripsi.');
-    if (!('AudioDecoder' in window) || !('VideoDecoder' in window)) { alert('Browser Anda tidak mendukung WebCodecs. Gunakan Chrome/Edge terbaru.'); return; }
     isProcessing = true;
     let successCount = 0; let failCount = 0;
     for (let seg of selected) {
@@ -1093,248 +1082,223 @@ ${jsonString}`;
     const formData = new FormData();
     formData.append('file', audioBlob, 'segment.wav');
     formData.append('model', 'whisper-large-v3');
-    formData.append('language', 'zh');
+    formData.append('language', getSourceLanguage());
     formData.append('response_format', 'text');
     const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}` }, body: formData });
     if (!response.ok) { const err = await response.text(); throw new Error(`Groq API error: ${response.status} - ${err}`); }
     return (await response.text()).trim();
   }
 
-  // ========== AI RE-SPLIT SELECTED SEGMENTS (FIXED) ==========
-async function aiReSplitSelected() {
-  if (isProcessing) return;
-  if (!videoFile && !audioFile) return alert('Upload video atau audio terlebih dahulu.');
+  // ========== AI RE-SPLIT SELECTED SEGMENTS ==========
+  async function aiReSplitSelected() {
+    if (isProcessing) return;
+    if (!videoFile && !audioFile) return alert('Upload video atau audio terlebih dahulu.');
 
-  const selected = segments.filter(s => s.selected);
-  if (selected.length === 0) return alert('Pilih segmen yang akan di-split (centang checkbox).');
+    const selected = segments.filter(s => s.selected);
+    if (selected.length === 0) return alert('Pilih segmen yang akan di-split (centang checkbox).');
 
-  // Cek apakah ada teks original (minimal untuk referensi)
-  const emptySegs = selected.filter(s => !s.original || s.original.trim() === '');
-  if (emptySegs.length > 0) {
-    if (!confirm(`⚠️ ${emptySegs.length} segmen tidak punya teks original. Tetap lanjutkan? (Re-Split akan menggunakan audio)`)) return;
-  }
-
-  const key = document.getElementById('transcribeApiKey').value.trim();
-  if (!key) return alert('Masukkan Groq API Key untuk AI Re-Split.');
-
-  // Hapus pengecekan VideoDecoder - hanya perlu AudioContext
-  // Cukup cek apakah AudioContext tersedia
-  if (!window.AudioContext && !window.webkitAudioContext) {
-    alert('Browser Anda tidak mendukung AudioContext. Gunakan Chrome/Edge terbaru.');
-    return;
-  }
-
-  isProcessing = true;
-  const btn = document.getElementById('aiReSplitAudioBtn');
-  btn.disabled = true;
-  const progressEl = document.getElementById('aiReSplitProgress');
-  progressEl.classList.remove('hidden');
-
-  let totalAdded = 0;
-  let failCount = 0;
-  let successCount = 0;
-
-  for (let i = 0; i < selected.length; i++) {
-    const seg = selected[i];
-    const duration = seg.end - seg.start;
-
-    progressEl.innerHTML = `⏳ Memproses segmen #${seg.id} (${i+1}/${selected.length}) — durasi ${duration.toFixed(1)}s...`;
-    progressEl.className = 'text-xs mb-2 status-bar status-progress';
-
-    seg._processing = true;
-    renderAll();
-
-    try {
-      // Ekstrak audio segmen ini saja
-      let audioBlob;
-      if (isAudioMode && audioFile) {
-        audioBlob = await extractAudioFromFile(audioFile, seg.start, seg.end);
-      } else if (videoFile) {
-        audioBlob = await extractAudioOptimized(seg.start, seg.end);
-      } else {
-        throw new Error('Tidak ada file audio atau video.');
-      }
-
-      // Kirim ke Whisper dengan verbose_json + segment timestamps
-      const formData = new FormData();
-      formData.append('file', audioBlob, 'resplit.wav');
-      formData.append('model', 'whisper-large-v3');
-      formData.append('language', 'zh');
-      formData.append('response_format', 'verbose_json');
-      formData.append('timestamp_granularities[]', 'segment');
-
-      const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${key}` },
-        body: formData
-      });
-
-      if (!response.ok) {
-        let errMsg = '';
-        try {
-          const errJson = await response.json();
-          errMsg = errJson.error?.message || errJson.error || JSON.stringify(errJson);
-        } catch {
-          errMsg = await response.text();
-        }
-        throw new Error(`Groq API error (${response.status}): ${errMsg}`);
-      }
-
-      const result = await response.json();
-
-      // Ambil sub-segmen dari hasil Whisper
-      let subSegs = [];
-      if (result.segments && result.segments.length > 0) {
-        subSegs = result.segments
-          .map(s => ({ text: s.text?.trim() || '', start: s.start, end: s.end }))
-          .filter(s => s.text.length > 0);
-      } else if (result.text && result.text.trim()) {
-        // Fallback: hanya 1 sub-segmen (tidak ada timestamp dari Whisper)
-        subSegs = [{ text: result.text.trim(), start: 0, end: duration }];
-      }
-
-      // Jika tidak ada sub-segmen sama sekali
-      if (subSegs.length === 0) {
-        throw new Error('Whisper tidak mengembalikan teks apapun.');
-      }
-
-      // Jika hanya 1 sub-segmen, update teks saja dan skip split
-      if (subSegs.length <= 1) {
-        seg.original = subSegs[0].text;
-        seg._processing = false;
-        successCount++;
-        progressEl.innerHTML = `⚠️ Segmen #${seg.id} tidak bisa dipecah (Whisper deteksi hanya 1 segmen). Teks diperbarui.`;
-        progressEl.className = 'text-xs mb-2 status-bar status-info';
-        renderAll();
-        await sleep(300);
-        continue;
-      }
-
-      // Timestamp sub-segmen dari Whisper adalah relatif terhadap awal segmen
-      // Kita offset dengan seg.start agar absolut dalam video
-      const newSegs = subSegs.map(s => ({
-        id: ++segCounter,
-        start: Math.max(seg.start, seg.start + s.start),
-        end: Math.min(seg.end, seg.start + s.end),
-        original: s.text,
-        translation: '',
-        selected: false,
-        _processing: false
-      }));
-
-      // Perbaiki boundary: pastikan tidak ada gap/overlap
-      for (let j = 0; j < newSegs.length - 1; j++) {
-        // Jika end > start next, set end = start next
-        if (newSegs[j].end > newSegs[j+1].start) {
-          newSegs[j].end = newSegs[j+1].start;
-        }
-        // Jika end <= start, beri minimal 0.1 detik
-        if (newSegs[j].end <= newSegs[j].start) {
-          newSegs[j].end = newSegs[j].start + 0.1;
-        }
-      }
-      // Sub-segmen terakhir tepat di batas akhir segmen asli
-      newSegs[newSegs.length - 1].end = seg.end;
-
-      // Filter segmen yang valid (duration > 0.05 detik)
-      const validSegs = newSegs.filter(s => (s.end - s.start) > 0.05 && s.original.trim().length > 0);
-
-      if (validSegs.length <= 1) {
-        // Tidak cukup segmen valid
-        seg.original = validSegs[0]?.original || subSegs[0].text;
-        seg._processing = false;
-        successCount++;
-        progressEl.innerHTML = `⚠️ Segmen #${seg.id} tidak bisa dipecah (hanya ${validSegs.length} segmen valid).`;
-        progressEl.className = 'text-xs mb-2 status-bar status-info';
-        renderAll();
-        await sleep(300);
-        continue;
-      }
-
-      // Ganti segmen lama dengan sub-segmen baru di posisi yang sama
-      const segIdx = segments.findIndex(s => s.id === seg.id);
-      if (segIdx !== -1) {
-        segments.splice(segIdx, 1, ...validSegs);
-      }
-
-      totalAdded += validSegs.length - 1;
-      successCount++;
-      progressEl.innerHTML = `✅ Segmen #${seg.id} dipecah jadi ${validSegs.length} sub-segmen.`;
-      progressEl.className = 'text-xs mb-2 status-bar status-success';
-      renderAll();
-
-    } catch (error) {
-      seg._processing = false;
-      failCount++;
-      progressEl.innerHTML = `❌ Segmen #${seg.id} gagal: ${error.message}`;
-      progressEl.className = 'text-xs mb-2 status-bar status-error';
-      // Tampilkan error di segmen agar terlihat
-      seg.original = seg.original || `[Error: ${error.message}]`;
-      renderAll();
+    const emptySegs = selected.filter(s => !s.original || s.original.trim() === '');
+    if (emptySegs.length > 0) {
+      if (!confirm(`⚠️ ${emptySegs.length} segmen tidak punya teks original. Tetap lanjutkan? (Re-Split akan menggunakan audio)`)) return;
     }
 
-    await sleep(400);
+    const key = document.getElementById('transcribeApiKey').value.trim();
+    if (!key) return alert('Masukkan Groq API Key untuk AI Re-Split.');
+
+    if (!window.AudioContext && !window.webkitAudioContext) {
+      alert('Browser Anda tidak mendukung AudioContext. Gunakan Chrome/Edge terbaru.');
+      return;
+    }
+
+    isProcessing = true;
+    const btn = document.getElementById('aiReSplitAudioBtn');
+    btn.disabled = true;
+    const progressEl = document.getElementById('aiReSplitProgress');
+    progressEl.classList.remove('hidden');
+
+    let totalAdded = 0;
+    let failCount = 0;
+    let successCount = 0;
+
+    for (let i = 0; i < selected.length; i++) {
+      const seg = selected[i];
+      const duration = seg.end - seg.start;
+
+      progressEl.innerHTML = `⏳ Memproses segmen #${seg.id} (${i+1}/${selected.length}) — durasi ${duration.toFixed(1)}s...`;
+      progressEl.className = 'text-xs mb-2 status-bar status-progress';
+
+      seg._processing = true;
+      renderAll();
+
+      try {
+        let audioBlob;
+        if (isAudioMode && audioFile) {
+          audioBlob = await extractAudioFromFile(audioFile, seg.start, seg.end);
+        } else if (videoFile) {
+          audioBlob = await extractAudioOptimized(seg.start, seg.end);
+        } else {
+          throw new Error('Tidak ada file audio atau video.');
+        }
+
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'resplit.wav');
+        formData.append('model', 'whisper-large-v3');
+        formData.append('language', getSourceLanguage());
+        formData.append('response_format', 'verbose_json');
+        formData.append('timestamp_granularities[]', 'segment');
+
+        const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${key}` },
+          body: formData
+        });
+
+        if (!response.ok) {
+          let errMsg = '';
+          try {
+            const errJson = await response.json();
+            errMsg = errJson.error?.message || errJson.error || JSON.stringify(errJson);
+          } catch {
+            errMsg = await response.text();
+          }
+          throw new Error(`Groq API error (${response.status}): ${errMsg}`);
+        }
+
+        const result = await response.json();
+
+        let subSegs = [];
+        if (result.segments && result.segments.length > 0) {
+          subSegs = result.segments
+            .map(s => ({ text: s.text?.trim() || '', start: s.start, end: s.end }))
+            .filter(s => s.text.length > 0);
+        } else if (result.text && result.text.trim()) {
+          subSegs = [{ text: result.text.trim(), start: 0, end: duration }];
+        }
+
+        if (subSegs.length === 0) {
+          throw new Error('Whisper tidak mengembalikan teks apapun.');
+        }
+
+        if (subSegs.length <= 1) {
+          seg.original = subSegs[0].text;
+          seg._processing = false;
+          successCount++;
+          progressEl.innerHTML = `⚠️ Segmen #${seg.id} tidak bisa dipecah (Whisper deteksi hanya 1 segmen). Teks diperbarui.`;
+          progressEl.className = 'text-xs mb-2 status-bar status-info';
+          renderAll();
+          await sleep(300);
+          continue;
+        }
+
+        const newSegs = subSegs.map(s => ({
+          id: ++segCounter,
+          start: Math.max(seg.start, seg.start + s.start),
+          end: Math.min(seg.end, seg.start + s.end),
+          original: s.text,
+          translation: '',
+          selected: false,
+          _processing: false
+        }));
+
+        for (let j = 0; j < newSegs.length - 1; j++) {
+          if (newSegs[j].end > newSegs[j+1].start) {
+            newSegs[j].end = newSegs[j+1].start;
+          }
+          if (newSegs[j].end <= newSegs[j].start) {
+            newSegs[j].end = newSegs[j].start + 0.1;
+          }
+        }
+        newSegs[newSegs.length - 1].end = seg.end;
+
+        const validSegs = newSegs.filter(s => (s.end - s.start) > 0.05 && s.original.trim().length > 0);
+
+        if (validSegs.length <= 1) {
+          seg.original = validSegs[0]?.original || subSegs[0].text;
+          seg._processing = false;
+          successCount++;
+          progressEl.innerHTML = `⚠️ Segmen #${seg.id} tidak bisa dipecah (hanya ${validSegs.length} segmen valid).`;
+          progressEl.className = 'text-xs mb-2 status-bar status-info';
+          renderAll();
+          await sleep(300);
+          continue;
+        }
+
+        const segIdx = segments.findIndex(s => s.id === seg.id);
+        if (segIdx !== -1) {
+          segments.splice(segIdx, 1, ...validSegs);
+        }
+
+        totalAdded += validSegs.length - 1;
+        successCount++;
+        progressEl.innerHTML = `✅ Segmen #${seg.id} dipecah jadi ${validSegs.length} sub-segmen.`;
+        progressEl.className = 'text-xs mb-2 status-bar status-success';
+        renderAll();
+
+      } catch (error) {
+        seg._processing = false;
+        failCount++;
+        progressEl.innerHTML = `❌ Segmen #${seg.id} gagal: ${error.message}`;
+        progressEl.className = 'text-xs mb-2 status-bar status-error';
+        seg.original = seg.original || `[Error: ${error.message}]`;
+        renderAll();
+      }
+
+      await sleep(400);
+    }
+
+    isProcessing = false;
+    btn.disabled = false;
+    autosave();
+
+    const finalMsg = failCount === 0
+      ? `✅ AI Re-Split selesai! ${successCount} segmen diproses, +${totalAdded} segmen baru.`
+      : `⚠️ Selesai: ${successCount} berhasil, ${failCount} gagal, +${totalAdded} segmen baru.`;
+    progressEl.innerHTML = finalMsg;
+    progressEl.className = `text-xs mb-2 status-bar ${failCount === 0 ? 'status-success' : 'status-error'}`;
+    setStatus(finalMsg, failCount === 0 ? 'success' : 'error');
   }
 
-  isProcessing = false;
-  btn.disabled = false;
-  autosave();
+  // ========== AI RE-SPLIT BY TEXT (LLM) ==========
+  async function aiReSplitByText() {
+    if (isProcessing) return;
 
-  const finalMsg = failCount === 0
-    ? `✅ AI Re-Split selesai! ${successCount} segmen diproses, +${totalAdded} segmen baru.`
-    : `⚠️ Selesai: ${successCount} berhasil, ${failCount} gagal, +${totalAdded} segmen baru.`;
-  progressEl.innerHTML = finalMsg;
-  progressEl.className = `text-xs mb-2 status-bar ${failCount === 0 ? 'status-success' : 'status-error'}`;
-  setStatus(finalMsg, failCount === 0 ? 'success' : 'error');
-}
+    const selected = segments.filter(s => s.selected);
+    if (selected.length === 0) return alert('Pilih segmen yang akan di-split (centang checkbox).');
 
-// ========== AI RE-SPLIT BY TEXT (LLM proporsional) (FIXED) ==========
-async function aiReSplitByText() {
-  if (isProcessing) return;
+    const emptySegs = selected.filter(s => !s.original || s.original.trim() === '');
+    if (emptySegs.length > 0) {
+      return alert(`❌ ${emptySegs.length} segmen tidak punya teks original. Lakukan transkripsi dulu.`);
+    }
 
-  const selected = segments.filter(s => s.selected);
-  if (selected.length === 0) return alert('Pilih segmen yang akan di-split (centang checkbox).');
+    const groqKey = document.getElementById('transcribeApiKey').value.trim();
+    if (!groqKey) {
+      return alert('Masukkan Groq API Key di kolom Transkripsi untuk AI Re-Split by Text.');
+    }
 
-  // Cek apakah semua segmen terpilih punya teks
-  const emptySegs = selected.filter(s => !s.original || s.original.trim() === '');
-  if (emptySegs.length > 0) {
-    return alert(`❌ ${emptySegs.length} segmen tidak punya teks original. Lakukan transkripsi dulu.`);
-  }
+    setStatus('🔧 Re-Split by Text menggunakan Groq (LLM)', 'info');
 
-  // ===== PERBAIKAN: API Key validation =====
-  // Untuk Re-Split by Text, kita hanya menggunakan Groq API
-  // Karena kita akan memanggil Groq chat completions
-  const groqKey = document.getElementById('transcribeApiKey').value.trim();
-  if (!groqKey) {
-    return alert('Masukkan Groq API Key di kolom Transkripsi untuk AI Re-Split by Text.');
-  }
+    isProcessing = true;
+    const btn = document.getElementById('aiReSplitTextBtn');
+    btn.disabled = true;
+    const progressEl = document.getElementById('aiReSplitProgress');
+    progressEl.classList.remove('hidden');
 
-  // Tampilkan info provider yang digunakan
-  setStatus('🔧 Re-Split by Text menggunakan Groq (LLM)', 'info');
+    let totalAdded = 0;
+    let failCount = 0;
+    let successCount = 0;
 
-  isProcessing = true;
-  const btn = document.getElementById('aiReSplitTextBtn');
-  btn.disabled = true;
-  const progressEl = document.getElementById('aiReSplitProgress');
-  progressEl.classList.remove('hidden');
+    for (let i = 0; i < selected.length; i++) {
+      const seg = selected[i];
+      const duration = seg.end - seg.start;
 
-  let totalAdded = 0;
-  let failCount = 0;
-  let successCount = 0;
+      progressEl.innerHTML = `⏳ [Text] Memproses segmen #${seg.id} (${i+1}/${selected.length})...`;
+      progressEl.className = 'text-xs mb-2 status-bar status-progress';
 
-  for (let i = 0; i < selected.length; i++) {
-    const seg = selected[i];
-    const duration = seg.end - seg.start;
+      seg._processing = true;
+      renderAll();
 
-    progressEl.innerHTML = `⏳ [Text] Memproses segmen #${seg.id} (${i+1}/${selected.length})...`;
-    progressEl.className = 'text-xs mb-2 status-bar status-progress';
-
-    seg._processing = true;
-    renderAll();
-
-    try {
-      // Kirim teks ke LLM untuk dipecah per kalimat/dialog
-      const prompt = `Kamu adalah tool untuk memecah subtitle. Teks berikut adalah subtitle bahasa Mandarin dari satu segmen video yang terlalu panjang dan berisi beberapa kalimat atau dialog.
+      try {
+        const prompt = `Kamu adalah tool untuk memecah subtitle. Teks berikut adalah subtitle dari satu segmen video yang terlalu panjang dan berisi beberapa kalimat atau dialog.
 
 Pecahkan teks ini menjadi kalimat-kalimat terpisah yang natural. Setiap kalimat harus bermakna lengkap.
 
@@ -1344,262 +1308,157 @@ Kembalikan HANYA array JSON, tidak ada teks lain sama sekali, tidak ada markdown
 Teks yang dipecah:
 ${seg.original}`;
 
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${groqKey}`
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.1,
-          max_tokens: 1024
-        })
-      });
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${groqKey}`
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.1,
+            max_tokens: 1024
+          })
+        });
 
-      if (!response.ok) {
-        let errMsg = '';
+        if (!response.ok) {
+          let errMsg = '';
+          try {
+            const errJson = await response.json();
+            errMsg = errJson.error?.message || errJson.error || JSON.stringify(errJson);
+          } catch {
+            errMsg = await response.text();
+          }
+          throw new Error(`Groq API error (${response.status}): ${errMsg}`);
+        }
+
+        const data = await response.json();
+
+        let rawText = data?.choices?.[0]?.message?.content?.trim() || '';
+        if (!rawText) {
+          throw new Error('Response AI kosong (tidak ada content).');
+        }
+
+        let cleanText = rawText;
+        cleanText = cleanText.replace(/```json\s*/gi, '');
+        cleanText = cleanText.replace(/```\s*/g, '');
+        cleanText = cleanText.trim();
+
+        const arrayMatch = cleanText.match(/\[[\s\S]*\]/);
+        if (arrayMatch) {
+          cleanText = arrayMatch[0];
+        }
+
+        let sentences = [];
         try {
-          const errJson = await response.json();
-          errMsg = errJson.error?.message || errJson.error || JSON.stringify(errJson);
-        } catch {
-          errMsg = await response.text();
+          sentences = JSON.parse(cleanText);
+          if (!Array.isArray(sentences)) {
+            throw new Error('Response bukan array');
+          }
+          sentences = sentences.map(s => String(s).trim()).filter(s => s.length > 0);
+        } catch (e) {
+          const fallback = rawText.split(/[\n\r]+/).filter(line => line.trim().length > 0);
+          if (fallback.length > 1) {
+            sentences = fallback.map(s => s.replace(/^[\d\s\.\-]+/, '').trim()).filter(s => s.length > 0);
+          } else {
+            throw new Error(`AI tidak mengembalikan JSON valid: ${rawText.slice(0, 100)}...`);
+          }
         }
-        throw new Error(`Groq API error (${response.status}): ${errMsg}`);
-      }
 
-      const data = await response.json();
-
-      // Ambil content dari response
-      let rawText = data?.choices?.[0]?.message?.content?.trim() || '';
-      if (!rawText) {
-        throw new Error('Response AI kosong (tidak ada content).');
-      }
-
-      // ===== PERBAIKAN: Parser yang robust =====
-      // Bersihkan markdown code fence
-      let cleanText = rawText;
-
-      // Hapus ```json ... ``` atau ``` ... ```
-      cleanText = cleanText.replace(/```json\s*/gi, '');
-      cleanText = cleanText.replace(/```\s*/g, '');
-      cleanText = cleanText.trim();
-
-      // Jika masih ada teks di luar JSON, coba ekstrak array
-      const arrayMatch = cleanText.match(/\[[\s\S]*\]/);
-      if (arrayMatch) {
-        cleanText = arrayMatch[0];
-      }
-
-      let sentences = [];
-      try {
-        sentences = JSON.parse(cleanText);
-        if (!Array.isArray(sentences)) {
-          throw new Error('Response bukan array');
+        if (sentences.length === 0) {
+          throw new Error('AI mengembalikan array kosong.');
         }
-        sentences = sentences.map(s => String(s).trim()).filter(s => s.length > 0);
-      } catch (e) {
-        // Jika parsing gagal, coba split berdasarkan newline atau titik
-        const fallback = rawText.split(/[\n\r]+/).filter(line => line.trim().length > 0);
-        if (fallback.length > 1) {
-          sentences = fallback.map(s => s.replace(/^[\d\s\.\-]+/, '').trim()).filter(s => s.length > 0);
-        } else {
-          throw new Error(`AI tidak mengembalikan JSON valid: ${rawText.slice(0, 100)}...`);
+
+        if (sentences.length <= 1) {
+          seg.original = sentences[0] || seg.original;
+          seg._processing = false;
+          successCount++;
+          progressEl.innerHTML = `⚠️ Segmen #${seg.id} tidak bisa dipecah (AI deteksi hanya 1 kalimat).`;
+          progressEl.className = 'text-xs mb-2 status-bar status-info';
+          renderAll();
+          await sleep(300);
+          continue;
         }
-      }
 
-      if (sentences.length === 0) {
-        throw new Error('AI mengembalikan array kosong.');
-      }
+        const totalChars = sentences.reduce((sum, s) => sum + s.length, 0);
 
-      if (sentences.length <= 1) {
-        // Tidak bisa dipecah lagi
-        seg.original = sentences[0] || seg.original;
-        seg._processing = false;
+        let cursor = seg.start;
+        const newSegs = sentences.map((sentence, idx) => {
+          const ratio = sentence.length / totalChars;
+          const segDuration = duration * ratio;
+          let start = cursor;
+          let end = idx === sentences.length - 1 ? seg.end : Math.min(cursor + segDuration, seg.end);
+
+          if (end <= start) {
+            end = start + 0.1;
+          }
+
+          const result = {
+            id: ++segCounter,
+            start: parseFloat(start.toFixed(3)),
+            end: parseFloat(end.toFixed(3)),
+            original: sentence,
+            translation: '',
+            selected: false,
+            _processing: false
+          };
+          cursor = end;
+          return result;
+        });
+
+        if (newSegs.length > 0) {
+          newSegs[newSegs.length - 1].end = parseFloat(seg.end.toFixed(3));
+        }
+
+        const validSegs = newSegs.filter(s => (s.end - s.start) > 0.05 && s.original.trim().length > 0);
+
+        if (validSegs.length <= 1) {
+          seg.original = validSegs[0]?.original || sentences[0];
+          seg._processing = false;
+          successCount++;
+          progressEl.innerHTML = `⚠️ Segmen #${seg.id} tidak bisa dipecah (hanya ${validSegs.length} segmen valid).`;
+          progressEl.className = 'text-xs mb-2 status-bar status-info';
+          renderAll();
+          await sleep(300);
+          continue;
+        }
+
+        const segIdx = segments.findIndex(s => s.id === seg.id);
+        if (segIdx !== -1) {
+          segments.splice(segIdx, 1, ...validSegs);
+        }
+
+        totalAdded += validSegs.length - 1;
         successCount++;
-        progressEl.innerHTML = `⚠️ Segmen #${seg.id} tidak bisa dipecah (AI deteksi hanya 1 kalimat).`;
-        progressEl.className = 'text-xs mb-2 status-bar status-info';
+        progressEl.innerHTML = `✅ Segmen #${seg.id} dipecah jadi ${validSegs.length} kalimat (proporsional).`;
+        progressEl.className = 'text-xs mb-2 status-bar status-success';
         renderAll();
-        await sleep(300);
-        continue;
-      }
 
-      // Hitung total panjang karakter semua kalimat
-      const totalChars = sentences.reduce((sum, s) => sum + s.length, 0);
-
-      // Bagi timestamp proporsional berdasarkan jumlah karakter
-      let cursor = seg.start;
-      const newSegs = sentences.map((sentence, idx) => {
-        const ratio = sentence.length / totalChars;
-        const segDuration = duration * ratio;
-        let start = cursor;
-        let end = idx === sentences.length - 1 ? seg.end : Math.min(cursor + segDuration, seg.end);
-
-        // Pastikan start < end
-        if (end <= start) {
-          end = start + 0.1;
-        }
-
-        const result = {
-          id: ++segCounter,
-          start: parseFloat(start.toFixed(3)),
-          end: parseFloat(end.toFixed(3)),
-          original: sentence,
-          translation: '',
-          selected: false,
-          _processing: false
-        };
-        cursor = end;
-        return result;
-      });
-
-      // Pastikan segmen terakhir berakhir tepat di seg.end
-      if (newSegs.length > 0) {
-        newSegs[newSegs.length - 1].end = parseFloat(seg.end.toFixed(3));
-      }
-
-      // Filter segmen valid (durasi > 0.05 detik)
-      const validSegs = newSegs.filter(s => (s.end - s.start) > 0.05 && s.original.trim().length > 0);
-
-      if (validSegs.length <= 1) {
-        seg.original = validSegs[0]?.original || sentences[0];
+      } catch (error) {
         seg._processing = false;
-        successCount++;
-        progressEl.innerHTML = `⚠️ Segmen #${seg.id} tidak bisa dipecah (hanya ${validSegs.length} segmen valid).`;
-        progressEl.className = 'text-xs mb-2 status-bar status-info';
+        failCount++;
+        const errorMsg = error.message || 'Unknown error';
+        progressEl.innerHTML = `❌ Segmen #${seg.id} gagal: ${errorMsg}`;
+        progressEl.className = 'text-xs mb-2 status-bar status-error';
+        seg.original = seg.original || `[Error: ${errorMsg}]`;
         renderAll();
-        await sleep(300);
-        continue;
       }
 
-      // Ganti segmen lama dengan sub-segmen baru
-      const segIdx = segments.findIndex(s => s.id === seg.id);
-      if (segIdx !== -1) {
-        segments.splice(segIdx, 1, ...validSegs);
-      }
-
-      totalAdded += validSegs.length - 1;
-      successCount++;
-      progressEl.innerHTML = `✅ Segmen #${seg.id} dipecah jadi ${validSegs.length} kalimat (proporsional).`;
-      progressEl.className = 'text-xs mb-2 status-bar status-success';
-      renderAll();
-
-    } catch (error) {
-      seg._processing = false;
-      failCount++;
-      const errorMsg = error.message || 'Unknown error';
-      progressEl.innerHTML = `❌ Segmen #${seg.id} gagal: ${errorMsg}`;
-      progressEl.className = 'text-xs mb-2 status-bar status-error';
-      // Tampilkan error di segmen agar terlihat
-      seg.original = seg.original || `[Error: ${errorMsg}]`;
-      renderAll();
+      await sleep(400);
     }
 
-    await sleep(400);
+    isProcessing = false;
+    btn.disabled = false;
+    autosave();
+
+    const finalMsg = failCount === 0
+      ? `✅ Re-Split by Text selesai! ${successCount} segmen diproses, +${totalAdded} segmen baru.`
+      : `⚠️ Selesai: ${successCount} berhasil, ${failCount} gagal, +${totalAdded} segmen baru.`;
+    progressEl.innerHTML = finalMsg;
+    progressEl.className = `text-xs mb-2 status-bar ${failCount === 0 ? 'status-success' : 'status-error'}`;
+    setStatus(finalMsg, failCount === 0 ? 'success' : 'error');
   }
-
-  isProcessing = false;
-  btn.disabled = false;
-  autosave();
-
-  const finalMsg = failCount === 0
-    ? `✅ Re-Split by Text selesai! ${successCount} segmen diproses, +${totalAdded} segmen baru.`
-    : `⚠️ Selesai: ${successCount} berhasil, ${failCount} gagal, +${totalAdded} segmen baru.`;
-  progressEl.innerHTML = finalMsg;
-  progressEl.className = `text-xs mb-2 status-bar ${failCount === 0 ? 'status-success' : 'status-error'}`;
-  setStatus(finalMsg, failCount === 0 ? 'success' : 'error');
-}
-
-// ========== Helper: extractAudioOptimized (TIDAK DIUBAH) ==========
-// Fungsi ini tetap sama seperti sebelumnya
-async function extractAudioOptimized(start, end) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const response = await fetch(videoURL);
-      const arrayBuffer = await response.arrayBuffer();
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      const sampleRate = audioBuffer.sampleRate;
-      const startSample = Math.floor(start * sampleRate);
-      const endSample = Math.floor(end * sampleRate);
-      const length = endSample - startSample;
-      if (length <= 0) throw new Error('Durasi segmen tidak valid');
-      const channels = audioBuffer.numberOfChannels;
-      const monoBuffer = audioContext.createBuffer(1, length, sampleRate);
-      const monoData = monoBuffer.getChannelData(0);
-      for (let i = 0; i < length; i++) {
-        let sum = 0;
-        for (let ch = 0; ch < channels; ch++) {
-          const data = audioBuffer.getChannelData(ch);
-          const idx = startSample + i;
-          sum += data[Math.min(idx, data.length - 1)] || 0;
-        }
-        monoData[i] = sum / channels;
-      }
-      const targetRate = 16000;
-      const ratio = sampleRate / targetRate;
-      const newLength = Math.floor(length / ratio);
-      const downsampledBuffer = audioContext.createBuffer(1, newLength, targetRate);
-      const downsampledData = downsampledBuffer.getChannelData(0);
-      for (let i = 0; i < newLength; i++) {
-        const srcIdx = Math.floor(i * ratio);
-        downsampledData[i] = monoData[Math.min(srcIdx, monoData.length - 1)] || 0;
-      }
-      const wavBlob = bufferToWav(downsampledBuffer);
-      await audioContext.close();
-      resolve(wavBlob);
-    } catch (error) {
-      reject(new Error(`Gagal ekstrak audio: ${error.message}`));
-    }
-  });
-}
-
-// ========== Helper: extractAudioFromFile (TIDAK DIUBAH) ==========
-async function extractAudioFromFile(file, start, end) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const arrayBuffer = await file.arrayBuffer();
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      const sampleRate = audioBuffer.sampleRate;
-      const startSample = Math.floor(start * sampleRate);
-      const endSample = Math.floor(end * sampleRate);
-      const length = endSample - startSample;
-      if (length <= 0) throw new Error('Durasi segmen tidak valid');
-      const channels = audioBuffer.numberOfChannels;
-      const newBuffer = audioContext.createBuffer(channels, length, sampleRate);
-      for (let ch = 0; ch < channels; ch++) {
-        const channelData = audioBuffer.getChannelData(ch);
-        const newChannelData = newBuffer.getChannelData(ch);
-        for (let i = 0; i < length; i++) {
-          if (startSample + i < channelData.length) newChannelData[i] = channelData[startSample + i];
-        }
-      }
-      const monoBuffer = audioContext.createBuffer(1, length, sampleRate);
-      const monoData = monoBuffer.getChannelData(0);
-      for (let i = 0; i < length; i++) {
-        let sum = 0;
-        for (let ch = 0; ch < channels; ch++) sum += newBuffer.getChannelData(ch)[i] || 0;
-        monoData[i] = sum / channels;
-      }
-      const targetRate = 16000;
-      const ratio = sampleRate / targetRate;
-      const newLength2 = Math.floor(length / ratio);
-      const downsampledBuffer = audioContext.createBuffer(1, newLength2, targetRate);
-      const downsampledData = downsampledBuffer.getChannelData(0);
-      for (let i = 0; i < newLength2; i++) {
-        const srcIdx = Math.floor(i * ratio);
-        downsampledData[i] = monoData[Math.min(srcIdx, monoData.length - 1)] || 0;
-      }
-      const wavBlob = bufferToWav(downsampledBuffer);
-      await audioContext.close();
-      resolve(wavBlob);
-    } catch (error) {
-      reject(new Error(`Gagal ekstrak audio: ${error.message}`));
-    }
-  });
-}
 
   // ========== AUTO TRANSCRIBE FULL ==========
   async function autoTranscribeFull() {
@@ -1678,7 +1537,7 @@ async function extractAudioFromFile(file, start, end) {
     const formData = new FormData();
     formData.append('file', audioBlob, `full_video.${fileExtension}`);
     formData.append('model', 'whisper-large-v3');
-    formData.append('language', 'zh');
+    formData.append('language', getSourceLanguage());
     formData.append('response_format', 'verbose_json');
     formData.append('timestamp_granularities[]', 'segment');
     const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}` }, body: formData });
@@ -1881,6 +1740,14 @@ async function extractAudioFromFile(file, start, end) {
       renderAll();
     }
     updateVideoDuration();
+
+    // Restore saved source language
+    const savedLang = localStorage.getItem('sourceLanguage');
+    if (savedLang) {
+      const langSelect = document.getElementById('sourceLanguageSelect');
+      if (langSelect) langSelect.value = savedLang;
+    }
+
     const savedTranscribeKey = localStorage.getItem('transcribeApiKey');
     if (savedTranscribeKey) document.getElementById('transcribeApiKey').value = savedTranscribeKey;
     document.getElementById('transcribeApiKey').addEventListener('change', function() { localStorage.setItem('transcribeApiKey', this.value); });
