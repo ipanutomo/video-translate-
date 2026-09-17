@@ -626,8 +626,57 @@
     const seg = segments.find(s => s.id === id);
     if (seg) video.currentTime = seg.start;
     renderAll();
+    updateActiveSegLabel();  // ← tambah ini (opsional, karena renderAll sudah handle)
   }
-  
+
+  // ========== ACTIVE SEGMENT BAR ==========
+  let lastActiveSegId = null;
+
+  function jumpToActiveSegment() {
+    if (!currentSegId) return;
+    const seg = segments.find(s => s.id === currentSegId);
+    if (!seg) return;
+    video.currentTime = seg.start;
+    // Scroll segment list ke segmen aktif
+    const row = segmentListEl.querySelector(`.segment-row[data-id="${currentSegId}"]`);
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  function focusActiveTranslation() {
+    if (!currentSegId) return;
+    const row = segmentListEl.querySelector(`.segment-row[data-id="${currentSegId}"]`);
+    if (!row) return;
+    const input = row.querySelector('.seg-translation');
+    if (input) {
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => input.focus(), 250);
+    }
+  }
+
+  function updateActiveSegLabel() {
+    const labelEl = document.getElementById('activeSegLabel');
+    const btnEl = document.getElementById('activeSegBtn');
+    if (!labelEl || !btnEl) return;
+
+    if (lastActiveSegId === currentSegId) return; // anti-spam reflow
+    lastActiveSegId = currentSegId;
+
+    if (!currentSegId) {
+      labelEl.textContent = 'Tidak ada segmen aktif';
+      btnEl.classList.add('opacity-60');
+      return;
+    }
+    const seg = segments.find(s => s.id === currentSegId);
+    if (!seg) {
+      labelEl.textContent = 'Tidak ada segmen aktif';
+      btnEl.classList.add('opacity-60');
+      return;
+    }
+    btnEl.classList.remove('opacity-60');
+    labelEl.textContent = `Segmen #${seg.id} — ${formatTime(seg.start)} → ${formatTime(seg.end)}`;
+  }
   // ========== SELECT EMPTY/ERROR TRANSLATIONS ==========
   function selectEmptyTranslations() {
     const emptyOrErrorSegs = segments.filter(seg => {
@@ -823,6 +872,7 @@ ${jsonString}`;
         segCountEl.textContent = segments.length + ' segmen';
         updateOverlay();
         updateJSONPreview();
+        updateActiveSegLabel();  // ← tambah ini
       } catch (e) { console.warn('Render error:', e); }
       finally {
         isRendering = false;
@@ -934,9 +984,11 @@ ${jsonString}`;
       blocks2.forEach((block, index) => { if (segments[index] && segments[index].id === seg.id) block.classList.add('active'); });
       const rows = segmentListEl.querySelectorAll('.segment-row');
       rows.forEach(row => { row.classList.toggle('active-seg', row.dataset.id == seg.id); });
+    } else {
+      currentSegId = null;
     }
+    updateActiveSegLabel();
   }
-
   function escHtml(str) {
     if (!str) return '';
     return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
