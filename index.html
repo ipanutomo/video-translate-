@@ -130,7 +130,21 @@
           <button class="btn btn-sm btn-primary" onclick="setOverlay('both')">Both</button>
         </div>
       </div>
-      
+
+      <!-- Active Segment Bar (sticky) -->
+      <div id="activeSegBar" class="card sticky top-2 z-20 flex items-center gap-2"
+           style="background:#1a2740; border-left:4px solid #60a5fa;">
+        <button id="activeSegBtn" class="btn btn-sm btn-primary flex-1 text-left"
+                onclick="jumpToActiveSegment()">
+          <i class="fas fa-bullseye mr-1"></i>
+          <span id="activeSegLabel">Tidak ada segmen aktif</span>
+        </button>
+        <button class="btn btn-sm btn-outline" onclick="focusActiveTranslation()"
+                title="Fokus ke input terjemahan">
+          <i class="fas fa-pen"></i>
+        </button>
+      </div>
+            
       <div class="card">
         <div class="flex justify-between items-center mb-1"><span class="text-xs font-semibold">Timeline Segmen</span><span id="segCount" class="text-xs text-gray-400">0 segmen</span></div>
         <div id="timelineContainer" class="timeline"></div>
