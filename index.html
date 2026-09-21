@@ -95,9 +95,9 @@
       
       <button class="btn btn-success" onclick="document.getElementById('audioInput').click()"><i class="fas fa-music mr-1"></i> Upload MP3</button>
       <input type="file" id="audioInput" accept=".mp3,.wav,.m4a,.aac,.ogg" class="hidden" onchange="loadAudio(event)">
-      
       <button class="btn btn-outline" onclick="importSRT()"><i class="fas fa-file-import mr-1"></i> Import SRT</button>
       <button class="btn btn-outline" onclick="exportSRT('original')"><i class="fas fa-download mr-1"></i> Export SRT</button>
+      <button class="btn btn-primary" onclick="exportSRT('translation')"><i class="fas fa-language mr-1"></i> Export SRT Translation</button>
       <button class="btn btn-outline" onclick="saveProject()"><i class="fas fa-save mr-1"></i> Save</button>
       <button class="btn btn-outline" onclick="loadProject()"><i class="fas fa-folder-open mr-1"></i> Load</button>
       <button class="btn btn-outline" onclick="copyJSON()"><i class="fas fa-code mr-1"></i> Copy JSON</button>
