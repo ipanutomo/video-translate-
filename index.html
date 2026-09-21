@@ -1385,10 +1385,11 @@ ${seg.original}`;
             'Authorization': `Bearer ${groqKey}`
           },
           body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.1,
-            max_tokens: 1024
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.1,
+          max_tokens: 1024,
+          stream: false
           })
         });
 
@@ -1405,36 +1406,46 @@ ${seg.original}`;
 
         const data = await response.json();
 
-        let rawText = data?.choices?.[0]?.message?.content?.trim() || '';
-        if (!rawText) {
-          throw new Error('Response AI kosong (tidak ada content).');
-        }
+let rawText = data?.choices?.[0]?.message?.content?.trim() || '';
 
-        let cleanText = rawText;
-        cleanText = cleanText.replace(/```json\s*/gi, '');
-        cleanText = cleanText.replace(/```\s*/g, '');
-        cleanText = cleanText.trim();
+// FIX 1: strip <think>...</think> block (Llama reasoning mode)
+rawText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
-        const arrayMatch = cleanText.match(/\[[\s\S]*\]/);
-        if (arrayMatch) {
-          cleanText = arrayMatch[0];
-        }
+if (!rawText) {
+  throw new Error('Response AI kosong (tidak ada content).');
+}
 
-        let sentences = [];
-        try {
-          sentences = JSON.parse(cleanText);
-          if (!Array.isArray(sentences)) {
-            throw new Error('Response bukan array');
-          }
-          sentences = sentences.map(s => String(s).trim()).filter(s => s.length > 0);
-        } catch (e) {
-          const fallback = rawText.split(/[\n\r]+/).filter(line => line.trim().length > 0);
-          if (fallback.length > 1) {
-            sentences = fallback.map(s => s.replace(/^[\d\s\.\-]+/, '').trim()).filter(s => s.length > 0);
-          } else {
-            throw new Error(`AI tidak mengembalikan JSON valid: ${rawText.slice(0, 100)}...`);
-          }
-        }
+let cleanText = rawText;
+cleanText = cleanText.replace(/```json\s*/gi, '');
+cleanText = cleanText.replace(/```\s*/g, '');
+cleanText = cleanText.trim();
+
+// FIX 2: ambil array JSON yang paling dalam (hindari false match)
+const arrayMatch = cleanText.match(/(\[[\s\S]*?\])/);
+if (arrayMatch) {
+  cleanText = arrayMatch[0];
+}
+
+let sentences = [];
+try {
+  sentences = JSON.parse(cleanText);
+  if (!Array.isArray(sentences)) throw new Error('Response bukan array');
+  sentences = sentences.map(s => String(s).trim()).filter(s => s.length > 0);
+} catch (e) {
+  // FIX 3: fallback — pecah per baris atau per tanda baca
+  const byNewline = rawText.split(/[\n\r]+/).map(s => s.replace(/^["'\d\.\-\s]+/, '').replace(/["',]+$/, '').trim()).filter(s => s.length > 3);
+  if (byNewline.length > 1) {
+    sentences = byNewline;
+  } else {
+    // last resort: pecah per tanda baca kalimat
+    const byPunct = seg.original.split(/(?<=[。！？\.!?])\s+/).filter(s => s.trim().length > 0);
+    if (byPunct.length > 1) {
+      sentences = byPunct;
+    } else {
+      throw new Error(`AI tidak mengembalikan format valid. Raw: ${rawText.slice(0, 120)}`);
+    }
+  }
+}
 
         if (sentences.length === 0) {
           throw new Error('AI mengembalikan array kosong.');
